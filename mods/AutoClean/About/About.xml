@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ModMetaData>
+  <name>Auto Clean</name>
+  <author>Shuo</author>
+  <packageId>shuo.autoclean</packageId>
+  <supportedVersions>
+    <li>1.7</li>
+  </supportedVersions>
+  <modDependencies>
+    <li>
+      <packageId>brrainz.harmony</packageId>
+      <displayName>Harmony</displayName>
+      <steamWorkshopUrl>steam://url/CommunityFilePage/2009463077</steamWorkshopUrl>
+    </li>
+  </modDependencies>
+  <!-- 必须在 Harmony 之后加载：Mod 构造函数里就会 PatchAll，
+       如果本体的程序集先于 Harmony 加载，HarmonyLib 类型还不存在，会直接报错。 -->
+  <loadAfter>
+    <li>brrainz.harmony</li>
+  </loadAfter>
+  <description>每天在设定时刻自动清除居住区内的污渍，不需要小人动手。时刻、范围、提示均可在 Mod 设置里调整，另有「立即清扫一次」用于测试。</description>
+</ModMetaData>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+
+  <MainButtonDef>
+    <defName>GridThermalConsole</defName>
+    <label>grid</label>
+    <description>Review every power net's production, consumption and stored energy, and manage grouped heaters and coolers.</description>
+    <tabWindowClass>Shuo.GridThermal.MainTabWindow_Console</tabWindowClass>
+    <!-- 原版 order：Architect 1 / Work 10 / Schedule 20 / Assign 30 / Animals 40 /
+         Wildlife 50 / Research 60 / World 70 ... 放在建筑师右边便于随手查看。 -->
+    <order>5</order>
+  </MainButtonDef>
+
+</Defs>

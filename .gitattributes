@@ -1,0 +1,9 @@
+# 默认按文本处理，自动换行
+* text=auto
+
+# 批处理必须是 CRLF，否则在 cmd 里解析括号块会出错
+*.bat text eol=crlf
+
+# 二进制资源，别让 git 做换行转换
+*.dll binary
+*.png binary

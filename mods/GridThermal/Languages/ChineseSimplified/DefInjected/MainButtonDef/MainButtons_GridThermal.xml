@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LanguageData>
+
+  <GridThermalConsole.label>电网</GridThermalConsole.label>
+  <GridThermalConsole.description>查看每张电网的发电、耗电、净输出与储能，并统一管理加热器与制冷器的温控分组。</GridThermalConsole.description>
+
+</LanguageData>

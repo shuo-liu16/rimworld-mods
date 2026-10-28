@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ModMetaData>
+  <name>Grid &amp; Thermal Console</name>
+  <author>Shuo</author>
+  <packageId>shuo.gridthermal</packageId>
+  <supportedVersions>
+    <li>1.7</li>
+  </supportedVersions>
+  <description>底栏新增「电网」标签页：一处查看所有电网的发电、耗电、净输出、储能与电量百分比；并支持把加热器与制冷器分组，组内机器共用同一个目标温度，集中调节。</description>
+</ModMetaData>

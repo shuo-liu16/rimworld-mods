@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  给原版加热器与制冷器各挂一个自定义 Comp。
+  注意：这是「改已有 Def」，所以放在 Patches/ 而不是 Defs/，
+  这样别的 Mod 也在改这两个 Def 时不会互相覆盖。
+-->
+<Patch>
+
+  <Operation Class="PatchOperationAdd">
+    <xpath>/Defs/ThingDef[defName="Heater"]/comps</xpath>
+    <value>
+      <li Class="Shuo.GridThermal.CompProperties_ThermalGroup" />
+    </value>
+  </Operation>
+
+  <Operation Class="PatchOperationAdd">
+    <xpath>/Defs/ThingDef[defName="Cooler"]/comps</xpath>
+    <value>
+      <li Class="Shuo.GridThermal.CompProperties_ThermalGroup" />
+    </value>
+  </Operation>
+
+</Patch>
