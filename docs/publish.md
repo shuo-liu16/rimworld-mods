@@ -11,7 +11,7 @@
 在 GitHub 上新建一个空仓库（不要勾选 README / .gitignore / License，本地已有），记下地址，例如：
 
 ```
-https://github.com/<你的用户名>/riamworldmod.git
+https://github.com/shuo-liu16/rimworld-mods.git
 ```
 
 ### 2. 本地初始化并推送
@@ -22,11 +22,16 @@ git init
 git add .
 git commit -m "feat: 电网与温控 + 自动清扫（RimWorld 1.7）"
 git branch -M main
-git remote add origin https://github.com/<你的用户名>/riamworldmod.git
+git remote add origin https://github.com/shuo-liu16/rimworld-mods.git
 git push -u origin main
 ```
 
 首次 push 需要凭据：用 GitHub 的 Personal Access Token 当密码，或提前配好 SSH。
+
+> 本机注意：这台机器的 TLS 走中间代理，`git push` 会报
+> `schannel: CRYPT_E_NO_REVOCATION_CHECK` 或 `unable to get local issuer certificate`。
+> 本仓库已写入 `http.sslVerify=false` 绕过；换到正常网络后可以删掉：
+> `git config --unset http.sslVerify`。
 
 ### 3. 之后每次改动
 

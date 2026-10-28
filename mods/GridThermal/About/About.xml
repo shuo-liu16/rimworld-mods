@@ -3,6 +3,7 @@
   <name>Grid &amp; Thermal Console</name>
   <author>Shuo</author>
   <packageId>shuo.gridthermal</packageId>
+  <url>https://github.com/shuo-liu16/rimworld-mods</url>
   <supportedVersions>
     <li>1.7</li>
   </supportedVersions>

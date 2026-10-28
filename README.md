@@ -1,5 +1,7 @@
 # RimWorld 自用模组合集
 
+> 仓库地址：https://github.com/shuo-liu16/rimworld-mods
+
 两个给《环世界》写的小模组，解决我自己玩的时候最烦的三件事：**电看不见、温度调不过来、基地总得有人扫地**。
 
 适配 **RimWorld 1.7**（含 Waylith 引擎的新版本）。个人自制自用，觉得有用直接拿去。
@@ -171,6 +173,6 @@ deploy.bat    :: 把 mods\* 同步到游戏 Mods 目录（按需改脚本里的�
 - **可以自取**：代码以 MIT 协议开源，你可以自由使用、修改、二次分发，甚至直接并进自己的整合包，不需要问我。
 - 二次分发时保留 `LICENSE` 与作者信息即可；如果你修了 bug，欢迎回推一份。
 - 本项目与 Ludeon Studios 无隶属关系，RimWorld 及其素材版权归 Ludeon 所有。
-- 反馈渠道：**GitHub Issues**（推荐，能贴日志）或**创意工坊页面留言**。
+- 反馈渠道：**[GitHub Issues](https://github.com/shuo-liu16/rimworld-mods/issues)**（推荐，能贴日志）或**创意工坊页面留言**。
 
 如果这两个模组帮你省了点事，那它们的目的就达到了。

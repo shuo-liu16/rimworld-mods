@@ -55,7 +55,7 @@
 【反馈】
 
 Bug 请附：游戏版本、Mod 列表、Player.log 中搜索 GridThermal 的片段、复现步骤。
-GitHub: <仓库地址>
+GitHub: https://github.com/shuo-liu16/rimworld-mods
 ```
 
 **标签**：`Mod` `Interface` `QoL`
@@ -113,7 +113,7 @@ GitHub: <仓库地址>
 【反馈】
 
 Bug 请附：游戏版本、Mod 列表、Player.log 中搜索 AutoClean 的片段、复现步骤。
-GitHub: <仓库地址>
+GitHub: https://github.com/shuo-liu16/rimworld-mods
 ```
 
 **标签**：`Mod` `QoL`

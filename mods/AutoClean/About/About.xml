@@ -3,6 +3,7 @@
   <name>Auto Clean</name>
   <author>Shuo</author>
   <packageId>shuo.autoclean</packageId>
+  <url>https://github.com/shuo-liu16/rimworld-mods</url>
   <supportedVersions>
     <li>1.7</li>
   </supportedVersions>
