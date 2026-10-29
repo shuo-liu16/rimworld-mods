@@ -139,17 +139,33 @@ namespace Shuo.WorkSorter
             if ((long)now - lastApplyTick < interval)
                 return;
 
-            // 在星图上没有「当前地图」，等到回到地面再算，不要白白消耗一次刷新窗口。
-            Map map = Find.CurrentMap;
-            if (map == null)
+            // 分基地和主基地各有各的人，都要排。星图阶段 Find.Maps 里没有
+            // 玩家定居点，循环自然什么都不做，不会白白消耗一次刷新窗口。
+            int changed = 0;
+            int homes = 0;
+            List<Map> maps = Find.Maps;
+            for (int i = 0; i < maps.Count; i++)
+            {
+                Map m = maps[i];
+                if (m == null || !m.IsPlayerHome)
+                    continue;
+                homes++;
+                changed += WorkSorterApplier.ApplyAll(m, false, false);
+            }
+
+            if (homes == 0)
                 return;
 
-            int changed = WorkSorterApplier.ApplyAll(map, s.notifyOnApply);
             lastApplyTick = now;
             lastChanged = changed;
 
             if (changed > 0)
+            {
                 Log.Message("[WorkSorter] 自动刷新完成：调整 " + changed + " 格工作优先级。");
+                if (s.notifyOnApply)
+                    Messages.Message("工作优先级已自动更新：" + changed + " 格。",
+                        MessageTypeDefOf.NeutralEvent, false);
+            }
         }
     }
 }

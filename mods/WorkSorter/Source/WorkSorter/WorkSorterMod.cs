@@ -25,6 +25,13 @@ namespace Shuo.WorkSorter
             Scribe_Values.Look(ref maxTopPerPawn, "maxTopPerPawn", 3);
             Scribe_Values.Look(ref takeOverDisabled, "takeOverDisabled", false);
             Scribe_Values.Look(ref notifyOnApply, "notifyOnApply", false);
+
+            // 手改过配置文件、或者换版本带进来越界值时，界面上的 +/- 会卡在边界
+            // 出不去（比如已是 99，加号无效）。读进来就夹紧一次。
+            if (intervalDays < 1) intervalDays = 1;
+            if (intervalDays > 7) intervalDays = 7;
+            if (maxTopPerPawn < 1) maxTopPerPawn = 1;
+            if (maxTopPerPawn > 8) maxTopPerPawn = 8;
         }
     }
 
@@ -99,6 +106,8 @@ namespace Shuo.WorkSorter
         private static void DrawStepRow(Listing_Standard list, string label, ref int value,
             int min, int max, string unit, string tip)
         {
+            value = Mathf.Clamp(value, min, max);
+
             list.Label(label + "：" + value + unit);
             Rect row = list.GetRect(30f);
             float bw = 80f;

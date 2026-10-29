@@ -13,17 +13,19 @@ namespace Shuo.WorkSorter
     {
         /// <summary>
         /// 重算并立即应用。返回实际改动的格子数。
+        /// userInitiated 区分「玩家亲手按的」和「定时器触发的」——
+        /// 只有前者才会把定时自动排序解锁。
         /// </summary>
-        public static int ApplyAll(Map map, bool notify)
+        public static int ApplyAll(Map map, bool userInitiated, bool notify)
         {
             if (map == null)
                 return 0;
 
             WorkSorterPlan plan = WorkSorterEngine.Build(map);
-            return ApplyPlan(plan, notify);
+            return ApplyPlan(plan, userInitiated, notify);
         }
 
-        public static int ApplyPlan(WorkSorterPlan plan, bool notify)
+        public static int ApplyPlan(WorkSorterPlan plan, bool userInitiated, bool notify)
         {
             if (plan == null)
                 return 0;
@@ -87,7 +89,7 @@ namespace Shuo.WorkSorter
                     MessageTypeDefOf.NeutralEvent, false);
 
             // 玩家亲自按过「应用全部」了，之后才允许定时自动排序接手。
-            if (comp != null && notify)
+            if (comp != null && userInitiated)
                 comp.appliedOnce = true;
 
             return changed;
@@ -103,7 +105,7 @@ namespace Shuo.WorkSorter
             if (p.WorkTypeIsDisabled(w))
                 return false;
 
-            int pr = MathfExt.ClampInt(priority, 1, Pawn_WorkSettings.LowestPriority);
+            int pr = MathfExt.ClampInt(priority, 1, WorkSorterEngine.MaxPriority);
             try
             {
                 p.workSettings.EnableAndInitializeIfNotAlreadyInitialized();

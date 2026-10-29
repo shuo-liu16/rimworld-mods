@@ -117,6 +117,10 @@ namespace Shuo.WorkSorter
                 Pawn p = plan.pawns[pi];
                 Dictionary<WorkTypeDef, WorkSorterCell> row = plan.cells[p];
 
+                // 背景加成只跟这个人有关，先摊平成「技能 → 加成」的字典，
+                // 免得每算一格都去遍历两段 backstory 的 skillGains。
+                Dictionary<SkillDef, int> backstoryBonus = BackstorySkillMap(p);
+
                 for (int wi = 0; wi < plan.workTypes.Count; wi++)
                 {
                     WorkTypeDef w = plan.workTypes[wi];
@@ -129,13 +133,26 @@ namespace Shuo.WorkSorter
                     if (p.WorkTypeIsDisabled(w))
                         continue;
 
-                    WorkSorterCell c = Score(p, w, de);
+                    WorkSorterCell c = Score(p, w, de, backstoryBonus);
                     if (c == null)
                         continue;
 
                     row[w] = c;
                     de.capableCount++;
                 }
+            }
+
+            // —— 4.5 剔掉一个活都做不了的人 ——
+            // 婴儿、长期昏迷、被基因锁死全部工作的人，在表里只会占一列空白。
+            // 打分之后再过滤，因为「能不能做」要逐项问过才知道。
+            for (int i = plan.pawns.Count - 1; i >= 0; i--)
+            {
+                Pawn p = plan.pawns[i];
+                Dictionary<WorkTypeDef, WorkSorterCell> row;
+                if (plan.cells.TryGetValue(p, out row) && row.Count > 0)
+                    continue;
+                plan.cells.Remove(p);
+                plan.pawns.RemoveAt(i);
             }
 
             // —— 5. 需求补上「稀缺度」：能干的人越少，越该由这几个人顶上 ——
@@ -195,7 +212,8 @@ namespace Shuo.WorkSorter
         /// <summary>
         /// 单人单工作的适配度。返回 null 表示这个人根本不该碰这活。
         /// </summary>
-        private static WorkSorterCell Score(Pawn p, WorkTypeDef w, DemandEntry de)
+        private static WorkSorterCell Score(Pawn p, WorkTypeDef w, DemandEntry de,
+            Dictionary<SkillDef, int> backstoryBonus)
         {
             if (p.skills == null)
                 return null;
@@ -241,7 +259,7 @@ namespace Shuo.WorkSorter
             c.speed01 = Mathf.Clamp01((c.speedValue - 0.55f) / 1.35f);
 
             c.cap01 = CapacityFit(p, w);
-            c.back = BackstoryFit(p, w);
+            c.back = BackstoryFit(w, backstoryBonus);
 
             c.fit = WSkill * c.skill01
                   + WPassion * c.passion01
@@ -269,7 +287,23 @@ namespace Shuo.WorkSorter
             return Mathf.Sqrt(Mathf.Max(0.05f, sp * global));
         }
 
+        // 工作类型 → 专属速度属性的映射只跟 Def 有关，算一次就够。
+        // 每次重建预览要算 200 格，这里省下 200 次位标志比较。
+        private static readonly Dictionary<WorkTypeDef, StatDef> speedStatCache =
+            new Dictionary<WorkTypeDef, StatDef>();
+
         private static StatDef SpecificSpeedStat(WorkTypeDef w)
+        {
+            StatDef cached;
+            if (speedStatCache.TryGetValue(w, out cached))
+                return cached;
+
+            StatDef def = ResolveSpeedStat(w);
+            speedStatCache[w] = def;
+            return def;
+        }
+
+        private static StatDef ResolveSpeedStat(WorkTypeDef w)
         {
             WorkTags t = w.workTags;
             if ((t & WorkTags.Intellectual) != 0) return StatDefOf.ResearchSpeed;
@@ -342,43 +376,92 @@ namespace Shuo.WorkSorter
         }
 
         /// <summary>
-        /// 职业背景里的技能加成。原版创建小人时就按背景给技能，
-        /// 所以「成年职业是矿工」这条信息值得单独加一点分，
-        /// 否则一个 20 级厨师被拉去挖矿会被算成和矿工一样好。
+        /// 把两段职业背景的 skillGains 摊平成「技能 → 总加成」。
+        /// 原版创建小人时就按背景给技能，所以「成年职业是矿工」这条信息值得
+        /// 单独加一点分，否则一个 20 级厨师被拉去挖矿会被算成和矿工一样好。
+        /// 每个人只需要算一次，之后每格查表。
         /// </summary>
-        private static float BackstoryFit(Pawn p, WorkTypeDef w)
+        private static Dictionary<SkillDef, int> BackstorySkillMap(Pawn p)
         {
-            if (p.story == null || w.relevantSkills == null || w.relevantSkills.Count == 0)
-                return 0f;
+            Dictionary<SkillDef, int> map = new Dictionary<SkillDef, int>();
+            if (p.story == null)
+                return map;
 
-            float sum = 0f;
             List<BackstoryDef> all = p.story.AllBackstories;
             if (all == null)
-                return 0f;
+                return map;
 
             for (int i = 0; i < all.Count; i++)
             {
                 BackstoryDef bs = all[i];
                 if (bs == null || bs.skillGains == null)
                     continue;
+
                 for (int j = 0; j < bs.skillGains.Count; j++)
                 {
                     SkillGain g = bs.skillGains[j];
-                    if (g == null || g.skill == null)
+                    if (g == null || g.skill == null || g.amount == 0)
                         continue;
-                    if (w.relevantSkills.Contains(g.skill))
-                        sum += g.amount;
+
+                    int cur;
+                    map.TryGetValue(g.skill, out cur);
+                    map[g.skill] = cur + g.amount;
                 }
+            }
+
+            return map;
+        }
+
+        private static float BackstoryFit(WorkTypeDef w, Dictionary<SkillDef, int> map)
+        {
+            if (w.relevantSkills == null || w.relevantSkills.Count == 0 || map.Count == 0)
+                return 0f;
+
+            int sum = 0;
+            for (int i = 0; i < w.relevantSkills.Count; i++)
+            {
+                int v;
+                if (map.TryGetValue(w.relevantSkills[i], out v))
+                    sum += v;
             }
 
             return Mathf.Clamp01(sum / 12f) * MaxBackstoryBonus;
         }
 
         /// <summary>
+        /// 允许写入的最低档（原版是 4）。读静态字段而不是写死，是为了兼容把
+        /// 范围扩到 1-9 的那类 Mod；同时兜一个底：万一读到 0（静态构造没跑或
+        /// 读取时机不对），所有格都会被 clamp 成 0，等于「这个人什么都不做」。
+        /// </summary>
+        public static int MaxPriority
+        {
+            get
+            {
+                int v = Pawn_WorkSettings.LowestPriority;
+                return v < 4 ? 4 : v;
+            }
+        }
+
+        // 低于这个技能等级就算「不会」。3 级是原版新手的水平，
+        // 用来区分「学过」和「完全没碰过」。
+        private const float SkillFloor = 3f;
+
+        /// <summary>一个工作类型 + 它的候选人（已按适配度降序排好）。</summary>
+        private sealed class WorkGroup
+        {
+            public DemandEntry demand;
+            public readonly List<WorkSorterCell> cands = new List<WorkSorterCell>();
+        }
+
+        /// <summary>
         /// 两阶段分配。
-        /// 阶段一：按需求从高到低，替每个工作挑出最合适的一到三个人排第一档。
-        /// 阶段二：剩下的工作按各人适配度排成 2/3/4 档，形成「最爱做的事先做」的顺序。
-        /// 这样既保证关键岗位有人，又不会所有人都把同一件事当作第一优先。
+        /// 阶段一：给每个工作挑出最合适的 1-3 人排第一档；
+        /// 阶段二：剩下的工作按各人适配度排成 2/3/4 档。
+        ///
+        /// 阶段一的排序键是「需求」和「有没有人真的擅长」的加权，不能只看需求：
+        /// 医生、看守、基础工作这类 naturalPriority 很高的岗位会先占满每个人的
+        /// 名额，等排到烹饪、建造时已经没有位置了，结果厨师去做急救、矿工去
+        /// 拨开关，真正该由专人干的事全掉到第二档。
         /// </summary>
         private static void Assign(WorkSorterPlan plan)
         {
@@ -389,44 +472,82 @@ namespace Shuo.WorkSorter
             for (int i = 0; i < plan.pawns.Count; i++)
                 topCount[plan.pawns[i]] = 0;
 
-            List<DemandEntry> byDemand = new List<DemandEntry>(plan.demands.Values);
-            byDemand.Sort((a, b) => b.demand.CompareTo(a.demand));
-
-            for (int di = 0; di < byDemand.Count; di++)
+            // 1) 收集候选人
+            List<WorkGroup> groups = new List<WorkGroup>();
+            foreach (DemandEntry de in plan.demands.Values)
             {
-                DemandEntry de = byDemand[di];
                 if (de.capableCount <= 0)
                     continue;
 
-                List<WorkSorterCell> cands = new List<WorkSorterCell>();
+                WorkGroup g = new WorkGroup();
+                g.demand = de;
+
                 for (int pi = 0; pi < plan.pawns.Count; pi++)
                 {
                     WorkSorterCell c = plan.Cell(plan.pawns[pi], de.workType);
                     if (c != null)
-                        cands.Add(c);
+                        g.cands.Add(c);
                 }
-                if (cands.Count == 0)
+                if (g.cands.Count == 0)
                     continue;
 
-                cands.Sort((a, b) => b.fit.CompareTo(a.fit));
+                g.cands.Sort(CompareFit);
+                groups.Add(g);
+            }
 
-                // 消防、就医、卧床这三类是原版 alwaysStartActive 的工作：
-                // 它们本来就该全员第一档，不占「三个名额」。
-                if (de.workType.alwaysStartActive)
+            groups.Sort(CompareGroup);
+
+            // 2) 逐项分配第一档
+            for (int gi = 0; gi < groups.Count; gi++)
+            {
+                WorkGroup g = groups[gi];
+                WorkTypeDef w = g.demand.workType;
+                DemandEntry de = g.demand;
+
+                // 消防、就医、卧床：原版就是「谁碰上谁做」，全员第一档，不占名额。
+                if (IsMandatoryForEveryone(w))
                 {
-                    for (int i = 0; i < cands.Count; i++)
-                        cands[i].suggested = 1;
+                    for (int i = 0; i < g.cands.Count; i++)
+                        g.cands[i].suggested = 1;
                     continue;
                 }
 
-                int slots = SlotsFor(de, cands.Count);
+                bool needsSkill = w.relevantSkills != null && w.relevantSkills.Count > 0;
+                bool critical = de.baseImportance >= 0.75f;
+
+                // 有技能要求的工作，第一档只从「确实会」的人里挑。
+                // 一个达标的都没有时，关键岗位（医生、看守、驯养）仍然要有人兜底，
+                // 其它工作干脆不设第一档——等练出人来再说，别硬塞。
+                List<WorkSorterCell> pool = g.cands;
+                if (needsSkill)
+                {
+                    List<WorkSorterCell> skilled = new List<WorkSorterCell>();
+                    for (int i = 0; i < g.cands.Count; i++)
+                    {
+                        if (g.cands[i].avgSkill >= SkillFloor)
+                            skilled.Add(g.cands[i]);
+                    }
+
+                    if (skilled.Count > 0)
+                        pool = skilled;
+                    else if (!critical)
+                        continue;
+                }
+
+                int slots = SlotsFor(de, pool.Count);
                 int done = 0;
-                for (int i = 0; i < cands.Count && done < slots; i++)
+
+                for (int i = 0; i < pool.Count && done < slots; i++)
                 {
-                    WorkSorterCell c = cands[i];
+                    WorkSorterCell c = pool[i];
                     int had;
                     topCount.TryGetValue(c.pawn, out had);
                     if (had >= maxTopPerPawn)
+                        continue;
+
+                    // 关键岗位的第二个人必须也沾边：医生配两个，不等于
+                    // 随便拉一个不会医疗的人来当第二医生。
+                    if (done >= 1 && needsSkill && c.avgSkill < SkillFloor)
                         continue;
 
                     c.suggested = 1;
@@ -434,15 +555,19 @@ namespace Shuo.WorkSorter
                     done++;
                 }
 
-                // 覆盖保证：关键工作一个候选都没排上（都被名额限制挡掉），
-                // 也要硬塞给最合适的那个人，避免出现「没人做饭」这种局面。
-                if (done == 0 && de.baseImportance >= 0.75f)
+                // 覆盖保证：关键岗位一个都没排上（名额满了 / 人选不够），
+                // 破例塞给最合适的那个人——但每个人最多被破例一次，
+                // 否则所有关键岗位会轮流硬塞同一个人。
+                if (done == 0 && critical && pool.Count > 0)
                 {
-                    WorkSorterCell c = cands[0];
+                    WorkSorterCell c = pool[0];
                     int had;
                     topCount.TryGetValue(c.pawn, out had);
-                    c.suggested = 1;
-                    topCount[c.pawn] = had + 1;
+                    if (had <= maxTopPerPawn)
+                    {
+                        c.suggested = 1;
+                        topCount[c.pawn] = had + 1;
+                    }
                 }
             }
 
@@ -461,7 +586,7 @@ namespace Shuo.WorkSorter
                 if (rest.Count == 0)
                     continue;
 
-                rest.Sort((a, b) => SortScore(b).CompareTo(SortScore(a)));
+                rest.Sort(CompareSortScore);
 
                 int n = rest.Count;
                 for (int i = 0; i < n; i++)
@@ -479,15 +604,68 @@ namespace Shuo.WorkSorter
                     if (c.fit < 0.16f)
                         pr = 4;
 
-                    c.suggested = Mathf.Clamp(pr, 1, Pawn_WorkSettings.LowestPriority);
+                    c.suggested = Mathf.Clamp(pr, 1, MaxPriority);
                 }
             }
+        }
+
+        /// <summary>
+        /// 是否「谁碰上谁做」的工作。只认原版这三项：救火、就医、卧床。
+        /// BasicWorker（放囚犯、拨开关）虽然也是 alwaysStartActive，但它有真实工作量，
+        /// 该参与正常竞争——否则每人先白拿一个第一档名额，「每人最多 3 个 1」就废了。
+        /// </summary>
+        private static bool IsMandatoryForEveryone(WorkTypeDef w)
+        {
+            return w.defName == "Firefighter"
+                || w.defName == "Patient"
+                || w.defName == "PatientBedRest";
         }
 
         private static float SortScore(WorkSorterCell c)
         {
             float demandNorm = Mathf.Clamp01(c.demand / 1.6f);
             return c.fit * 0.75f + demandNorm * 0.25f;
+        }
+
+        // 下面几个比较器都带确定的 tie-breaker：List.Sort 不稳定，
+        // 同分项按任意顺序进场会让每次重算产出不同的排班，
+        // 玩家会看到优先级每隔几秒自己跳。
+
+        /// <summary>
+        /// 阶段一的排序：需求占 55%，「这项最强的候选人有多合适」占 45%。
+        /// 只看需求的话，医生/看守/基础工作会先占满名额，专业岗全掉到第二档。
+        /// </summary>
+        private static int CompareGroup(WorkGroup a, WorkGroup b)
+        {
+            float sa = a.demand.demand * 0.55f + a.cands[0].fit * 0.45f;
+            float sb = b.demand.demand * 0.55f + b.cands[0].fit * 0.45f;
+
+            int c = sb.CompareTo(sa);
+            if (c != 0)
+                return c;
+            c = b.demand.workType.naturalPriority.CompareTo(a.demand.workType.naturalPriority);
+            if (c != 0)
+                return c;
+            return string.CompareOrdinal(a.demand.workType.defName, b.demand.workType.defName);
+        }
+
+        private static int CompareFit(WorkSorterCell a, WorkSorterCell b)
+        {
+            int c = b.fit.CompareTo(a.fit);
+            if (c != 0)
+                return c;
+            return a.pawn.thingIDNumber.CompareTo(b.pawn.thingIDNumber);
+        }
+
+        private static int CompareSortScore(WorkSorterCell a, WorkSorterCell b)
+        {
+            int c = SortScore(b).CompareTo(SortScore(a));
+            if (c != 0)
+                return c;
+            c = b.workType.naturalPriority.CompareTo(a.workType.naturalPriority);
+            if (c != 0)
+                return c;
+            return string.CompareOrdinal(a.workType.defName, b.workType.defName);
         }
 
         private static int SlotsFor(DemandEntry de, int capable)
@@ -501,6 +679,11 @@ namespace Shuo.WorkSorter
 
             int s = Mathf.RoundToInt(capable * 0.30f * Mathf.Clamp(de.demand, 0.1f, 1.6f));
 
+            // 积压过半（比如三十件货堆在仓库门口）时再多派一个人，
+            // 否则「一万件待搬」和「三件待搬」拿到的人数一样。
+            if (de.backlog >= 0.6f)
+                s++;
+
             // 需求不够高的活不设第一档：没人排 1，大家在 2/3/4 里顺手做。
             // 否则「艺术」这种冷门工作也会硬拉一个人专门去雕石头。
             if (s < 1)
@@ -509,10 +692,25 @@ namespace Shuo.WorkSorter
             return Mathf.Clamp(s, 1, Mathf.Min(3, capable));
         }
 
+        /// <summary>
+        /// 工作类型的显示名。Mod 新增的工作类型可能没填 labelShort，
+        /// 直接往 Widgets.Label 里塞 null 会抛 NRE，这里兜一层。
+        /// </summary>
+        public static string WorkLabel(WorkTypeDef w)
+        {
+            if (w == null)
+                return "?";
+            if (!string.IsNullOrEmpty(w.labelShort))
+                return w.labelShort;
+            if (!string.IsNullOrEmpty(w.defName))
+                return w.defName;
+            return "?";
+        }
+
         private static string BuildReason(WorkSorterCell c, DemandEntry de)
         {
-            StringBuilder sb = new StringBuilder();
-            sb.Append(c.workType.labelShort).Append("　适配 ").Append(c.fit.ToString("0.00"));
+            StringBuilder sb = new StringBuilder(256);
+            sb.Append(WorkLabel(c.workType)).Append("　适配 ").Append(c.fit.ToString("0.00"));
 
             if (c.workType.relevantSkills != null && c.workType.relevantSkills.Count > 0)
                 sb.Append("\n技能 ").Append(c.avgSkill.ToString("0.0")).Append(" 级 → ").Append(c.skill01.ToString("0.00"));

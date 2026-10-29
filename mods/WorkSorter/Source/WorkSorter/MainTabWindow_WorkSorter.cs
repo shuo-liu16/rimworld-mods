@@ -20,8 +20,13 @@ namespace Shuo.WorkSorter
         private WorkSorterPlan plan;
         private int planTick = -1;
         private int planMapId = -1;
+        private Game planGame;
         private int pendingChanges;
         private Vector2 scroll = Vector2.zero;
+
+        // 每帧取一次存档组件就够了。Game.GetComponent<T>() 内部是遍历 components
+        // 列表，如果每个格子各取一次，200 格 × 60 帧就是每秒上万次遍历。
+        private WorkSorterGameComponent comp;
 
         public override Vector2 RequestedTabSize
         {
@@ -45,11 +50,13 @@ namespace Shuo.WorkSorter
         {
             // 关掉面板就把预览丢掉，下次打开重新按最新情况算。
             plan = null;
+            planGame = null;
             planTick = -1;
         }
 
         private void Draw(Rect inRect)
         {
+            comp = WorkSorterGameComponent.Instance;
             EnsurePlan();
 
             float y = inRect.y;
@@ -73,6 +80,9 @@ namespace Shuo.WorkSorter
 
             if (Widgets.ButtonText(new Rect(x, bar.y, 92f, 30f), "重新计算"))
             {
+                // 玩家主动要求重算时，连带把需求侧的缓存也丢掉，
+                // 否则刚搬完货还会看到 25 秒前的「待搬运 43」。
+                WorkSorterDemand.InvalidateCache();
                 plan = null;
                 planTick = -1;
                 EnsurePlan();
@@ -83,7 +93,7 @@ namespace Shuo.WorkSorter
 
             if (s != null && Widgets.ButtonText(new Rect(x, bar.y, 92f, 30f), "应用全部"))
             {
-                int n = WorkSorterApplier.ApplyPlan(plan, true);
+                int n = plan == null ? 0 : WorkSorterApplier.ApplyPlan(plan, true, true);
                 if (n == 0)
                     Messages.Message("没有需要改动的格子。", MessageTypeDefOf.RejectInput, false);
                 planTick = -1;
@@ -103,10 +113,12 @@ namespace Shuo.WorkSorter
                 }
                 x += 98f;
 
-                TooltipHandler.TipRegion(new Rect(bar.x + 196f, bar.y, 92f, 30f),
+                TooltipHandler.TipRegion(new Rect(bar.x + 98f, bar.y, 92f, 30f),
                     "应用全部：把当前预览写回游戏。已锁定的格子会被跳过。");
+                TooltipHandler.TipRegion(new Rect(bar.x + 196f, bar.y, 92f, 30f),
+                    "自动排序开关。开启后每隔若干天自动重排一次（需先手动应用过一次）。");
                 TooltipHandler.TipRegion(new Rect(bar.x + 294f, bar.y, 92f, 30f),
-                    "自动排序开关。开启后每隔若干天自动重排一次。");
+                    "两次自动重排的间隔天数。点一下加一天，到 7 之后回到 1。");
             }
 
             // 右侧状态
@@ -129,7 +141,6 @@ namespace Shuo.WorkSorter
                 return;
 
             float colW = ColumnWidth(head.width);
-            WorkSorterGameComponent comp = WorkSorterGameComponent.Instance;
 
             for (int i = 0; i < plan.pawns.Count; i++)
             {
@@ -206,7 +217,7 @@ namespace Shuo.WorkSorter
                     Widgets.DrawBoxSolid(new Rect(0f, rowY, view.width, RowH), new Color(0f, 0f, 0f, 0.04f));
 
                 Text.Font = GameFont.Tiny;
-                Widgets.Label(nameRect, w.labelShort);
+                Widgets.Label(nameRect, WorkSorterEngine.WorkLabel(w));
                 Text.Font = GameFont.Small;
 
                 for (int ci = 0; ci < plan.pawns.Count; ci++)
@@ -228,28 +239,38 @@ namespace Shuo.WorkSorter
 
         private void DrawCell(Rect rect, WorkSorterCell c)
         {
-            WorkSorterGameComponent comp = WorkSorterGameComponent.Instance;
             c.locked = comp != null && comp.IsCellLocked(c.pawn, c.workType);
 
             // 锁定后这一格以游戏内实际值为准——继续显示"建议值"会让人以为
             // 还没生效，实际上锁定就是不打算再改了。
             int shown = c.locked ? c.current : c.suggested;
+            Color bg = ColorFor(shown);
 
-            Widgets.DrawBoxSolid(rect, ColorFor(shown));
-
-            // 锁定 = 深色粗框；建议与现状不同 = 细框，表示"应用后会变"
-            Color oldColor = GUI.color;
+            // 锁定 = 深色粗框；建议与现状不同 = 细框，表示"应用后会变"。
+            // 用 DrawBoxSolidWithOutline 一次画完背景和边框，比先铺底色再画
+            // 一遍 Widgets.DrawBox 少一次四边矩形绘制——两百个格子省得出来。
+            Color outline;
+            int outlineW;
             if (c.locked)
             {
-                GUI.color = new Color(0.15f, 0.3f, 0.7f, 0.9f);
-                Widgets.DrawBox(rect, 2);
+                outline = new Color(0.15f, 0.3f, 0.7f, 0.9f);
+                outlineW = 2;
             }
             else if (c.suggested > 0 && c.suggested != c.current)
             {
-                GUI.color = new Color(0.1f, 0.1f, 0.1f, 0.45f);
-                Widgets.DrawBox(rect, 1);
+                outline = new Color(0.1f, 0.1f, 0.1f, 0.45f);
+                outlineW = 1;
             }
-            GUI.color = oldColor;
+            else
+            {
+                outline = Color.clear;
+                outlineW = 0;
+            }
+
+            if (outlineW > 0)
+                Widgets.DrawBoxSolidWithOutline(rect, bg, outline, outlineW);
+            else
+                Widgets.DrawBoxSolid(rect, bg);
 
             TextAnchor oldAnchor = Text.Anchor;
             GameFont oldFont = Text.Font;
@@ -274,11 +295,21 @@ namespace Shuo.WorkSorter
 
         private void DrawFooter(Rect r)
         {
-            WorkSorterGameComponent comp = WorkSorterGameComponent.Instance;
+            string hint;
 
-            string hint = "1 最高 · 4 最低　｜　点格子 = 立即应用并锁定，再点一次解锁　｜　点表头 = 锁定整人　｜　蓝框 = 已锁定，细框 = 应用后会变";
-            if (comp != null && !comp.appliedOnce)
-                hint += "\n自动排序尚未启动：先点一次「应用全部」，之后才会按间隔自己重排。";
+            if (comp == null)
+            {
+                // 组件没挂上说明 Harmony 补丁没生效。面板还能用（能看建议值），
+                // 但写回和锁定都不可用，得让玩家知道是配置问题而不是按钮坏了。
+                hint = "存档组件未注册（Harmony 补丁可能没打上）：本面板只能预览，应用与锁定不可用。\n"
+                     + "检查 Mod 列表里 Harmony 是否启用，并在加载顺序上排在前面。";
+            }
+            else
+            {
+                hint = "1 最高 · 4 最低　｜　点格子 = 立即应用并锁定，再点一次解锁　｜　点表头 = 锁定整人　｜　蓝框 = 已锁定，细框 = 应用后会变";
+                if (!comp.appliedOnce)
+                    hint += "\n自动排序尚未启动：先点一次「应用全部」，之后才会按间隔自己重排。";
+            }
 
             Text.Font = GameFont.Tiny;
             Text.Anchor = TextAnchor.MiddleLeft;
@@ -289,9 +320,12 @@ namespace Shuo.WorkSorter
 
         private void OnCellClick(WorkSorterCell c)
         {
-            WorkSorterGameComponent comp = WorkSorterGameComponent.Instance;
             if (comp == null)
+            {
+                Messages.Message("存档组件未注册，无法写入。请检查 Harmony 是否启用。",
+                    MessageTypeDefOf.RejectInput, false);
                 return;
+            }
 
             if (comp.IsCellLocked(c.pawn, c.workType))
             {
@@ -319,18 +353,24 @@ namespace Shuo.WorkSorter
 
         private void EnsurePlan()
         {
+            Game game = Verse.Current.Game;
             Map map = Find.CurrentMap;
-            if (map == null)
+            if (map == null || game == null)
             {
                 plan = null;
                 return;
             }
 
             int now = Find.TickManager.TicksGame;
+
+            // 读档后地图 uniqueID 不会变，但 Pawn 对象已经全是新的。
+            // 只比 mapId 会让 plan 里留着一堆上一局的死人引用，
+            // 点上去就写进了已经不在地图上的小人。必须连 Game 引用一起比。
             bool needRebuild = plan == null
+                               || !ReferenceEquals(game, planGame)
                                || map.uniqueID != planMapId
-                               || now - planTick > RebuildTicks
-                               || planTick < 0;
+                               || planTick < 0
+                               || (long)now - planTick > RebuildTicks;
 
             if (!needRebuild)
                 return;
@@ -338,6 +378,7 @@ namespace Shuo.WorkSorter
             plan = WorkSorterEngine.Build(map);
             planTick = now;
             planMapId = map.uniqueID;
+            planGame = game;
             pendingChanges = CountPending();
         }
 
@@ -351,8 +392,12 @@ namespace Shuo.WorkSorter
             {
                 foreach (WorkSorterCell c in row.Values)
                 {
-                    if (c.suggested > 0 && c.suggested != c.current)
-                        n++;
+                    if (c.suggested <= 0 || c.suggested == c.current)
+                        continue;
+                    // 锁定的格子不会被改，不该算进「待改动」里，否则数字永远归不了零。
+                    if (comp != null && comp.IsCellLocked(c.pawn, c.workType))
+                        continue;
+                    n++;
                 }
             }
             return n;
@@ -367,8 +412,10 @@ namespace Shuo.WorkSorter
 
         private static string ShortName(Pawn p)
         {
+            if (p == null || p.Name == null)
+                return "?";
             string s = p.Name.ToStringShort;
-            if (s == null)
+            if (string.IsNullOrEmpty(s))
                 return "?";
             if (s.Length > 5)
                 s = s.Substring(0, 5) + "…";
