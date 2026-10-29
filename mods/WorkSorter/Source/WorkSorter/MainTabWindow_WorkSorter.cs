@@ -15,7 +15,10 @@ namespace Shuo.WorkSorter
         private const float RowH = 24f;
         private const float NameW = 118f;
         private const float HeadH = 46f;
-        private const int RebuildTicks = 250;   // 约 4 秒重算一次预览，够用又不浪费
+        private const float ToolbarH = 38f;      // 按钮 30 + 间距 8
+        private const float FooterH = 44f;
+        private const float MaxBodyH = 360f;     // 表格区封顶，再多就滚动
+        private const int RebuildTicks = 250;    // 约 4 秒重算一次预览，够用又不浪费
 
         private WorkSorterPlan plan;
         private int planTick = -1;
@@ -28,9 +31,43 @@ namespace Shuo.WorkSorter
         // 列表，如果每个格子各取一次，200 格 × 60 帧就是每秒上万次遍历。
         private WorkSorterGameComponent comp;
 
+        // 窗口高度按「实际有几行工作」算，不写死。
+        // 写死 520 的后果：空地图或没殖民者时，520 高的窗口里只有一行提示字，
+        // 剩下全是窗口背景——就是「底栏上方撑出一块空白框」那个观感。
+        private Vector2 windowSize = new Vector2(1020f, 480f);
+
         public override Vector2 RequestedTabSize
         {
-            get { return new Vector2(1020f, 520f); }
+            get { return windowSize; }
+        }
+
+        public override void PreOpen()
+        {
+            base.PreOpen();
+
+            // 先算一次，才知道该把窗口开多大。此刻 comp 还没赋值，
+            // 但 EnsurePlan 里用到 comp 的地方都有 null 判断。
+            plan = null;
+            planTick = -1;
+            EnsurePlan();
+            windowSize = ComputeWindowSize();
+        }
+
+        private Vector2 ComputeWindowSize()
+        {
+            int rows = plan == null ? 0 : plan.workTypes.Count;
+
+            float bodyH;
+            if (rows <= 0)
+                bodyH = 64f;                                  // 够放一行提示
+            else
+                bodyH = Mathf.Min(rows * RowH + 8f, MaxBodyH);
+
+            float h = ToolbarH + HeadH + bodyH + FooterH;
+
+            // 窄屏（比如 1280×720）上 1020 宽会顶出去，跟着屏幕收一收。
+            float w = Mathf.Min(1020f, UI.screenWidth - 40f);
+            return new Vector2(w, Mathf.Clamp(h, 200f, 620f));
         }
 
         public override void DoWindowContents(Rect inRect)
@@ -61,17 +98,17 @@ namespace Shuo.WorkSorter
 
             float y = inRect.y;
             DrawToolbar(new Rect(inRect.x, y, inRect.width, 32f));
-            y += 38f;
+            y += ToolbarH;
 
             Rect head = new Rect(inRect.x, y, inRect.width, HeadH);
             y += HeadH;
             DrawHeader(head);
 
-            float footerH = 44f;
-            Rect body = new Rect(inRect.x, y, inRect.width, Mathf.Max(60f, inRect.height - (y - inRect.y) - footerH));
+            Rect body = new Rect(inRect.x, y, inRect.width,
+                Mathf.Max(60f, inRect.height - (y - inRect.y) - FooterH));
             DrawBody(body);
 
-            DrawFooter(new Rect(inRect.x, inRect.height - footerH + inRect.y - 2f, inRect.width, footerH));
+            DrawFooter(new Rect(inRect.x, inRect.height - FooterH + inRect.y - 2f, inRect.width, FooterH));
         }
 
         private void DrawToolbar(Rect bar)

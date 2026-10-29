@@ -305,6 +305,25 @@ Window(IWindowDrawing)      // 1.7 新增，必须传绘制实现
 - 传 `new DefaultWindowDrawing()`（`Verse` 命名空间下有这个实现）；
 - **更省事**：不做独立窗口，改成 `MainTabWindow` 子类挂在底栏标签页上。`MainTabWindow` 仍有无参构造，UI 代码只写 `DoWindowContents`，不用碰绘制后端。本仓库的 `MainTabWindow_Console` 走的就是这条路。
 
+### 底栏标签页的窗口尺寸：别写死
+
+`MainTabWindow.RequestedTabSize` 写死一个大值，是这类面板最常见的观感 bug：
+
+```
+底栏上方撑出一块空白框，位置正好在建筑师按钮上方
+```
+
+原因不是"画错了"，而是窗口背景按 `RequestedTabSize` 整块画出来，内容撑不满的部分就成了空白。`MainTabWindow` 的窗口是贴左下定位的（`x = 0`、`y = 屏幕高 - 窗口高 - 按钮高`），所以看起来就像底栏被顶高了。
+
+**这个坑在本仓库踩过两次**（`GridThermal` 470 → 300，之后 `WorkSorter` 又写死 520），做法固定下来：
+
+1. `PreOpen()` 里先算一次内容需要多高（行数 × 行高 + 固定部分），把结果存到字段；
+2. `RequestedTabSize` 只读这个字段；
+3. 行数会变的（切页、增删数据）在变化后调 `SetInitialSizeAndPosition()` 重新定位，差值小于 1px 就不动，免得每帧抖；
+4. 宽度也要 `Mathf.Min(想要的宽, UI.screenWidth - 40f)`，不然 1280 宽的屏幕上 1020 会顶出去。
+
+空的/无数据状态要有专门的矮尺寸（比如 200），不要沿用数据态的 500。
+
 ### 编译配置要点
 ```xml
 <TargetFramework>net10.0</TargetFramework>

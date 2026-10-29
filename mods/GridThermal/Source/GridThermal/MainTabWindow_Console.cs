@@ -32,10 +32,77 @@ namespace Shuo.GridThermal
         private int page;
         private Vector2 scrollPos = Vector2.zero;
 
-        /// <summary>刚好够用的高度，避免底栏被顶起一大块空白。</summary>
+        // 窗口高度按「当前页实际有几行」算，不写死。
+        // 写死一个偏大的固定值，早期殖民地只有一两个电网时，多出来的高度
+        // 就是整块窗口背景——底栏上方会撑出一个空白框。
+        private Vector2 windowSize = new Vector2(960f, 300f);
+
         public override Vector2 RequestedTabSize
         {
-            get { return new Vector2(960f, 300f); }
+            get { return windowSize; }
+        }
+
+        public override void PreOpen()
+        {
+            base.PreOpen();
+            windowSize = ComputeWindowSize();
+        }
+
+        private Vector2 ComputeWindowSize()
+        {
+            float bodyH;
+
+            try
+            {
+                Map map = Find.CurrentMap;
+
+                if (page == 0)
+                {
+                    int rows = 0;
+                    if (map != null)
+                    {
+                        EnsurePowerCache(map);
+                        rows = powerRows.Count;
+                    }
+                    // 汇总行 + 表头 + 数据行
+                    bodyH = 34f + 28f + rows * RowHeight + 10f;
+                }
+                else
+                {
+                    int rows = map == null ? 0 : ThermalGroups.ScanSorted(map).Count;
+                    bodyH = 28f + rows * (RowHeight + 4f) + 12f;
+                }
+            }
+            catch (System.Exception e)
+            {
+                SafeLog.Report("计算面板尺寸", e);
+                bodyH = 200f;
+            }
+
+            bodyH = Mathf.Clamp(bodyH, 60f, 400f);
+            float w = Mathf.Min(960f, UI.screenWidth - 40f);
+            return new Vector2(w, 28f + 10f + bodyH + 8f);
+        }
+
+        /// <summary>
+        /// 切页后内容行数会变，窗口跟着收放一次。差得多才动，
+        /// 免得每帧 SetInitialSizeAndPosition 把窗口晃来晃去。
+        /// </summary>
+        private void ResizeToContent()
+        {
+            try
+            {
+                Vector2 size = ComputeWindowSize();
+                if (Mathf.Abs(size.y - windowSize.y) < 1f && Mathf.Abs(size.x - windowSize.x) < 1f)
+                    return;
+
+                windowSize = size;
+                SetInitialSizeAndPosition();
+            }
+            catch (System.Exception e)
+            {
+                SafeLog.Report("调整面板尺寸", e);
+            }
         }
 
         public override void DoWindowContents(Rect inRect)
@@ -59,11 +126,13 @@ namespace Shuo.GridThermal
             {
                 page = 0;
                 scrollPos = Vector2.zero;
+                ResizeToContent();
             }
             if (Widgets.ButtonText(new Rect(inRect.x + 106f, inRect.y, 100f, tabH), "温控分组") && page != 1)
             {
                 page = 1;
                 scrollPos = Vector2.zero;
+                ResizeToContent();
             }
 
             Rect body = new Rect(inRect.x, inRect.y + tabH + 10f, inRect.width,
