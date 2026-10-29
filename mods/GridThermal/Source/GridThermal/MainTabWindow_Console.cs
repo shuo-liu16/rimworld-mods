@@ -64,23 +64,29 @@ namespace Shuo.GridThermal
                         EnsurePowerCache(map);
                         rows = powerRows.Count;
                     }
-                    // 汇总行 + 表头 + 数据行
-                    bodyH = 34f + 28f + rows * RowHeight + 10f;
+                    // 汇总行(32) + 表头(28) + 4 + 数据行 + 底部余量
+                    bodyH = 32f + RowHeight + 4f + rows * RowHeight + 14f;
                 }
                 else
                 {
                     int rows = map == null ? 0 : ThermalGroups.ScanSorted(map).Count;
-                    bodyH = 28f + rows * (RowHeight + 4f) + 12f;
+                    // 顶部两行说明(46) + 表头(28) + 4 + 每组 32 + 底部余量。
+                    // 这里原来漏算了开头那 46px，导致组一多就少一行、看起来「显示不全」。
+                    bodyH = 46f + RowHeight + 4f + rows * (RowHeight + 4f) + 14f;
                 }
             }
             catch (System.Exception e)
             {
                 SafeLog.Report("计算面板尺寸", e);
-                bodyH = 200f;
+                bodyH = 280f;
             }
 
-            bodyH = Mathf.Clamp(bodyH, 60f, 400f);
-            float w = Mathf.Min(960f, UI.screenWidth - 40f);
+            // 下限 260 让内容少的时候不要太扁；上限 520 放宽容 14 组左右，
+            // 再多的靠滚动——滚动条很窄，一超界看起来就像掉了几行。
+            bodyH = Mathf.Clamp(bodyH, 260f, 520f);
+
+            // 温控页内容到 x=816，960 宽右侧只剩 144，加宽到 1000 松一点。
+            float w = Mathf.Min(1000f, UI.screenWidth - 40f);
             return new Vector2(w, 28f + 10f + bodyH + 8f);
         }
 
