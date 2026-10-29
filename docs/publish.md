@@ -89,11 +89,11 @@ git commit -m "chore: 记录创意工坊 ID"
 
 已记录的工坊 ID：
 
-| Mod | PublishedFileId |
-| --- | --- |
-| Grid & Thermal Console | 3828947061 |
-| Auto Clean | 3828945363 |
-| Work Sorter | 未上传 |
+| Mod | PublishedFileId | 状态 |
+| --- | --- | --- |
+| Grid & Thermal Console | 3828947061 | 已上传，**被 Steam 移除**（见 `workshop-appeal.md`） |
+| Auto Clean | 3828945363 | 已上传，**被 Steam 移除**（见 `workshop-appeal.md`） |
+| Work Sorter | 未上传 | — |
 
 > 权威来源是 Steam 的上传日志 `D:\steam\logs\workshop_log.txt`：
 > `Create new workshop item ... : <id> (OK)` 后紧跟 `Upload finished ... : OK`
