@@ -175,6 +175,20 @@ namespace Shuo.WorkSorter
             Rect view = new Rect(0f, 0f, Mathf.Max(contentW, body.width - 16f), contentH);
             Widgets.BeginScrollView(body, ref scroll, view);
 
+            // EndScrollView 必须无条件执行：半路抛异常会留下一个没关闭的裁剪区，
+            // 之后整块窗口的绘制都会错位。用 finally 兜住。
+            try
+            {
+                DrawRows(colW, view, body);
+            }
+            finally
+            {
+                Widgets.EndScrollView();
+            }
+        }
+
+        private void DrawRows(float colW, Rect view, Rect body)
+        {
             float visTop = scroll.y;
             float visBottom = scroll.y + body.height;
 
@@ -210,8 +224,6 @@ namespace Shuo.WorkSorter
                     DrawCell(cr, c);
                 }
             }
-
-            Widgets.EndScrollView();
         }
 
         private void DrawCell(Rect rect, WorkSorterCell c)
