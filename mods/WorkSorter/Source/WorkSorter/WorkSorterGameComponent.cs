@@ -32,7 +32,23 @@ namespace Shuo.WorkSorter
         /// </summary>
         public bool appliedOnce;
 
+        /// <summary>
+        /// 无参构造给 Scribe 用（读档时反序列化组件走的是 Activator.CreateInstance(type)）。
+        /// </summary>
         public WorkSorterGameComponent()
+        {
+        }
+
+        /// <summary>
+        /// 带 Game 的构造给 Verse.Game.FillComponents() 用：Game 构造时它会反射扫描
+        /// 所有 GameComponent 子类，并按 (Game) 这个签名 CreateInstance。
+        /// 少了这个构造函数，读档会报 "Could not instantiate a GameComponent…
+        /// Constructor on type … not found"，组件根本不会被挂上。
+        ///
+        /// 注意 1.7 的 GameComponent 基类只有无参构造，所以这里不能写 base(game)；
+        /// 需要 Game 的地方一律走 Current.Game。
+        /// </summary>
+        public WorkSorterGameComponent(Game game)
         {
         }
 

@@ -324,6 +324,41 @@ Window(IWindowDrawing)      // 1.7 新增，必须传绘制实现
 
 空的/无数据状态要有专门的矮尺寸（比如 200），不要沿用数据态的 500。
 
+### 自定义 GameComponent 必须写两个构造函数
+
+RimWorld 用反射创建 `GameComponent`，两条路径要求的签名不一样：
+
+| 时机 | 调用方式 | 需要的构造 |
+|---|---|---|
+| `Game..ctor` → `FillComponents()` | `Activator.CreateInstance(type, this)` | `(Game)` |
+| 读档 `Scribe_Collections.Look(ref components, ..., ctorArgs: this)` | 同上 | `(Game)` |
+| 部分深拷贝 / 旧版代码路径 | `Activator.CreateInstance(type)` | `()` |
+
+**只写无参构造的后果**（本仓库 2026-10-29 实际踩到）：
+
+```
+Could not instantiate a GameComponent of type Shuo.WorkSorter.WorkSorterGameComponent:
+System.MissingMethodException: Constructor on type '...' not found.
+   at Verse.Game.FillComponents()
+   at Verse.Game..ctor()
+   at Verse.SavedGameLoaderNow.LoadGameFromSaveFileNow(...)
+```
+
+这条错误**不会让游戏崩**——`FillComponents` 对每个类型单独 try/catch，只打一条 Log.Error 就继续。所以表面看"Mod 正常加载、面板能开"，实际组件从来没被挂上，所有依赖它的状态（锁定表、计时器、已应用标志）全部失效。
+
+正确写法：
+
+```csharp
+public MyComp() { }                 // Scribe 用
+public MyComp(Game game) { }        // FillComponents 用
+```
+
+注意 1.7 的 `GameComponent` 基类**只有无参构造**（`ApiDump` 显示无误），所以不能写 `base(game)`；需要 Game 的地方一律走 `Current.Game`。
+
+`MapComponent` / `WorldComponent` 同理，分别需要 `(Map)` / `(World)`。
+
+> 排查提示：`GetComponent<T>()` 返回 null 时不要急着怪 Harmony。先看 `Player.log` 有没有 `Could not instantiate a GameComponent`。
+
 ### 编译配置要点
 ```xml
 <TargetFramework>net10.0</TargetFramework>
