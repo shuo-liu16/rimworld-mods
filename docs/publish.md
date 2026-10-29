@@ -83,6 +83,18 @@ git commit -m "chore: 记录创意工坊 ID"
 
 没有它，下次上传会被当成新 Mod，产生两条重复条目；有了它，游戏才知道「更新」的是同一条。
 
+> 这个文件只长在游戏目录里。`deploy.bat` 用的是 `robocopy /MIR`，
+> 源目录没有它就当多余文件删掉——所以脚本现在会先把它回收进仓库，
+> 并在同步时用 `/XF` 排除，两边都不会丢。
+
+已记录的工坊 ID：
+
+| Mod | PublishedFileId |
+| --- | --- |
+| Grid & Thermal Console | 3829566544 |
+| Auto Clean | 未上传 |
+| Work Sorter | 未上传 |
+
 ### 更新已发布的 Mod
 
 1. 改代码 → `build.bat`
