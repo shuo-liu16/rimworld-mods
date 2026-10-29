@@ -1,0 +1,378 @@
+using System;
+using System.Collections.Generic;
+using RimWorld;
+using UnityEngine;
+using Verse;
+
+namespace Shuo.WorkSorter
+{
+    /// <summary>
+    /// 底栏「工作」标签页：一张 工作 × 殖民者 的表，格子里是建议的优先级。
+    /// 先在表上预览，觉得合适再「应用全部」；单独点某一格会立刻生效并锁定它。
+    /// </summary>
+    public class MainTabWindow_WorkSorter : MainTabWindow
+    {
+        private const float RowH = 24f;
+        private const float NameW = 118f;
+        private const float HeadH = 46f;
+        private const int RebuildTicks = 250;   // 约 4 秒重算一次预览，够用又不浪费
+
+        private WorkSorterPlan plan;
+        private int planTick = -1;
+        private int planMapId = -1;
+        private int pendingChanges;
+        private Vector2 scroll = Vector2.zero;
+
+        public override Vector2 RequestedTabSize
+        {
+            get { return new Vector2(1020f, 520f); }
+        }
+
+        public override void DoWindowContents(Rect inRect)
+        {
+            try
+            {
+                Draw(inRect);
+            }
+            catch (Exception e)
+            {
+                SafeLog.Report("面板绘制", e);
+                Widgets.Label(inRect, "工作排序面板出错，已跳过本帧绘制。详情见 Player.log。");
+            }
+        }
+
+        public override void PostClose()
+        {
+            // 关掉面板就把预览丢掉，下次打开重新按最新情况算。
+            plan = null;
+            planTick = -1;
+        }
+
+        private void Draw(Rect inRect)
+        {
+            EnsurePlan();
+
+            float y = inRect.y;
+            DrawToolbar(new Rect(inRect.x, y, inRect.width, 32f));
+            y += 38f;
+
+            Rect head = new Rect(inRect.x, y, inRect.width, HeadH);
+            y += HeadH;
+            DrawHeader(head);
+
+            float footerH = 44f;
+            Rect body = new Rect(inRect.x, y, inRect.width, Mathf.Max(60f, inRect.height - (y - inRect.y) - footerH));
+            DrawBody(body);
+
+            DrawFooter(new Rect(inRect.x, inRect.height - footerH + inRect.y - 2f, inRect.width, footerH));
+        }
+
+        private void DrawToolbar(Rect bar)
+        {
+            float x = bar.x;
+
+            if (Widgets.ButtonText(new Rect(x, bar.y, 92f, 30f), "重新计算"))
+            {
+                plan = null;
+                planTick = -1;
+                EnsurePlan();
+            }
+            x += 98f;
+
+            WorkSorterSettings s = WorkSorterMod.Settings;
+
+            if (s != null && Widgets.ButtonText(new Rect(x, bar.y, 92f, 30f), "应用全部"))
+            {
+                int n = WorkSorterApplier.ApplyPlan(plan, true);
+                if (n == 0)
+                    Messages.Message("没有需要改动的格子。", MessageTypeDefOf.RejectInput, false);
+                planTick = -1;
+            }
+            x += 98f;
+
+            if (s != null)
+            {
+                string autoLabel = s.autoApply ? "自动：开" : "自动：关";
+                if (Widgets.ButtonText(new Rect(x, bar.y, 92f, 30f), autoLabel))
+                    s.autoApply = !s.autoApply;
+                x += 98f;
+
+                if (Widgets.ButtonText(new Rect(x, bar.y, 92f, 30f), "间隔 " + s.intervalDays + " 天"))
+                {
+                    s.intervalDays = s.intervalDays >= 7 ? 1 : s.intervalDays + 1;
+                }
+                x += 98f;
+
+                TooltipHandler.TipRegion(new Rect(bar.x + 196f, bar.y, 92f, 30f),
+                    "应用全部：把当前预览写回游戏。已锁定的格子会被跳过。");
+                TooltipHandler.TipRegion(new Rect(bar.x + 294f, bar.y, 92f, 30f),
+                    "自动排序开关。开启后每隔若干天自动重排一次。");
+            }
+
+            // 右侧状态
+            string stat = plan == null
+                ? ""
+                : "待改动 " + pendingChanges + " 格 / 共 " + (plan.pawns.Count * plan.workTypes.Count) + " 格";
+
+            Text.Anchor = TextAnchor.MiddleRight;
+            Widgets.Label(new Rect(bar.x, bar.y, bar.width - 4f, 30f), stat);
+            Text.Anchor = TextAnchor.UpperLeft;
+        }
+
+        private void DrawHeader(Rect head)
+        {
+            Text.Font = GameFont.Tiny;
+            Widgets.Label(new Rect(head.x, head.y, NameW - 6f, 20f), "工作 \\ 殖民者");
+            Text.Font = GameFont.Small;
+
+            if (plan == null || plan.pawns.Count == 0)
+                return;
+
+            float colW = ColumnWidth(head.width);
+            WorkSorterGameComponent comp = WorkSorterGameComponent.Instance;
+
+            for (int i = 0; i < plan.pawns.Count; i++)
+            {
+                Pawn p = plan.pawns[i];
+                Rect r = new Rect(head.x + NameW + i * colW, head.y, colW - 2f, 34f);
+
+                bool locked = comp != null && comp.IsPawnLocked(p);
+                if (locked)
+                {
+                    Color old = GUI.color;
+                    GUI.color = new Color(0.35f, 0.55f, 0.9f, 0.35f);
+                    Widgets.DrawBoxSolid(r, GUI.color);
+                    GUI.color = old;
+                }
+
+                Text.Font = GameFont.Tiny;
+                Text.Anchor = TextAnchor.UpperCenter;
+                Widgets.Label(r, ShortName(p));
+                Text.Anchor = TextAnchor.UpperLeft;
+                Text.Font = GameFont.Small;
+
+                TooltipHandler.TipRegion(r, p.Name.ToStringFull + (locked
+                    ? "\n\n已锁定：这个人的一切优先级都不会被自动改动。点击取消锁定。"
+                    : "\n\n点击锁定这个人，自动排序将完全跳过它。"));
+
+                if (Widgets.ButtonInvisible(r) && comp != null)
+                    comp.TogglePawnLock(p);
+            }
+        }
+
+        private void DrawBody(Rect body)
+        {
+            if (plan == null || plan.pawns.Count == 0 || plan.workTypes.Count == 0)
+            {
+                Widgets.Label(body, "当前地图没有可排序的殖民者。");
+                return;
+            }
+
+            float colW = ColumnWidth(body.width);
+            float contentW = NameW + colW * plan.pawns.Count;
+            float contentH = plan.workTypes.Count * RowH + 4f;
+
+            Rect view = new Rect(0f, 0f, Mathf.Max(contentW, body.width - 16f), contentH);
+            Widgets.BeginScrollView(body, ref scroll, view);
+
+            float visTop = scroll.y;
+            float visBottom = scroll.y + body.height;
+
+            for (int ri = 0; ri < plan.workTypes.Count; ri++)
+            {
+                float rowY = ri * RowH;
+                // 可视区裁剪：滚出屏幕的行连 Widget 都不建
+                if (rowY + RowH < visTop || rowY > visBottom)
+                    continue;
+
+                WorkTypeDef w = plan.workTypes[ri];
+
+                Rect nameRect = new Rect(0f, rowY, NameW - 6f, RowH);
+                if (ri % 2 == 0)
+                    Widgets.DrawBoxSolid(new Rect(0f, rowY, view.width, RowH), new Color(0f, 0f, 0f, 0.04f));
+
+                Text.Font = GameFont.Tiny;
+                Widgets.Label(nameRect, w.labelShort);
+                Text.Font = GameFont.Small;
+
+                for (int ci = 0; ci < plan.pawns.Count; ci++)
+                {
+                    WorkSorterCell c = plan.Cell(plan.pawns[ci], w);
+                    Rect cr = new Rect(NameW + ci * colW, rowY + 1f, colW - 2f, RowH - 3f);
+
+                    if (c == null)
+                    {
+                        Widgets.DrawBoxSolid(cr, new Color(0.25f, 0.25f, 0.25f, 0.35f));
+                        TooltipHandler.TipRegion(cr, "这个人做不了这项工作（被特性、背景或意识形态限制）。");
+                        continue;
+                    }
+
+                    DrawCell(cr, c);
+                }
+            }
+
+            Widgets.EndScrollView();
+        }
+
+        private void DrawCell(Rect rect, WorkSorterCell c)
+        {
+            WorkSorterGameComponent comp = WorkSorterGameComponent.Instance;
+            c.locked = comp != null && comp.IsCellLocked(c.pawn, c.workType);
+
+            // 锁定后这一格以游戏内实际值为准——继续显示"建议值"会让人以为
+            // 还没生效，实际上锁定就是不打算再改了。
+            int shown = c.locked ? c.current : c.suggested;
+
+            Widgets.DrawBoxSolid(rect, ColorFor(shown));
+
+            // 锁定 = 深色粗框；建议与现状不同 = 细框，表示"应用后会变"
+            Color oldColor = GUI.color;
+            if (c.locked)
+            {
+                GUI.color = new Color(0.15f, 0.3f, 0.7f, 0.9f);
+                Widgets.DrawBox(rect, 2);
+            }
+            else if (c.suggested > 0 && c.suggested != c.current)
+            {
+                GUI.color = new Color(0.1f, 0.1f, 0.1f, 0.45f);
+                Widgets.DrawBox(rect, 1);
+            }
+            GUI.color = oldColor;
+
+            TextAnchor oldAnchor = Text.Anchor;
+            GameFont oldFont = Text.Font;
+            Text.Anchor = TextAnchor.MiddleCenter;
+            Text.Font = GameFont.Small;
+
+            GUI.color = new Color(0.08f, 0.08f, 0.08f);
+            Widgets.Label(rect, shown <= 0 ? "·" : shown.ToString());
+            GUI.color = Color.white;
+
+            Text.Font = oldFont;
+            Text.Anchor = oldAnchor;
+
+            string tip = c.reason ?? "";
+            if (c.locked)
+                tip += "\n\n已锁定：自动排序不会改动这一格。点击解锁。";
+
+            TooltipHandler.TipRegion(rect, tip);
+            if (Widgets.ButtonInvisible(rect))
+                OnCellClick(c);
+        }
+
+        private void DrawFooter(Rect r)
+        {
+            WorkSorterGameComponent comp = WorkSorterGameComponent.Instance;
+
+            string hint = "1 最高 · 4 最低　｜　点格子 = 立即应用并锁定，再点一次解锁　｜　点表头 = 锁定整人　｜　蓝框 = 已锁定，细框 = 应用后会变";
+            if (comp != null && !comp.appliedOnce)
+                hint += "\n自动排序尚未启动：先点一次「应用全部」，之后才会按间隔自己重排。";
+
+            Text.Font = GameFont.Tiny;
+            Text.Anchor = TextAnchor.MiddleLeft;
+            Widgets.Label(r, hint);
+            Text.Anchor = TextAnchor.UpperLeft;
+            Text.Font = GameFont.Small;
+        }
+
+        private void OnCellClick(WorkSorterCell c)
+        {
+            WorkSorterGameComponent comp = WorkSorterGameComponent.Instance;
+            if (comp == null)
+                return;
+
+            if (comp.IsCellLocked(c.pawn, c.workType))
+            {
+                comp.UnlockCell(c.pawn, c.workType);
+                c.locked = false;
+                planTick = -1;
+                return;
+            }
+
+            int pr = c.suggested > 0 ? c.suggested : c.current;
+            if (pr <= 0)
+            {
+                Messages.Message("这一格没有可写入的优先级。", MessageTypeDefOf.RejectInput, false);
+                return;
+            }
+
+            if (WorkSorterApplier.ApplyCell(c.pawn, c.workType, pr))
+            {
+                comp.LockCell(c.pawn, c.workType);
+                c.locked = true;
+                c.current = pr;
+                pendingChanges = CountPending();
+            }
+        }
+
+        private void EnsurePlan()
+        {
+            Map map = Find.CurrentMap;
+            if (map == null)
+            {
+                plan = null;
+                return;
+            }
+
+            int now = Find.TickManager.TicksGame;
+            bool needRebuild = plan == null
+                               || map.uniqueID != planMapId
+                               || now - planTick > RebuildTicks
+                               || planTick < 0;
+
+            if (!needRebuild)
+                return;
+
+            plan = WorkSorterEngine.Build(map);
+            planTick = now;
+            planMapId = map.uniqueID;
+            pendingChanges = CountPending();
+        }
+
+        private int CountPending()
+        {
+            if (plan == null)
+                return 0;
+
+            int n = 0;
+            foreach (Dictionary<WorkTypeDef, WorkSorterCell> row in plan.cells.Values)
+            {
+                foreach (WorkSorterCell c in row.Values)
+                {
+                    if (c.suggested > 0 && c.suggested != c.current)
+                        n++;
+                }
+            }
+            return n;
+        }
+
+        private float ColumnWidth(float totalWidth)
+        {
+            int n = plan == null || plan.pawns.Count == 0 ? 1 : plan.pawns.Count;
+            float avail = totalWidth - NameW - 22f;
+            return Mathf.Clamp(avail / n, 30f, 68f);
+        }
+
+        private static string ShortName(Pawn p)
+        {
+            string s = p.Name.ToStringShort;
+            if (s == null)
+                return "?";
+            if (s.Length > 5)
+                s = s.Substring(0, 5) + "…";
+            return s;
+        }
+
+        private static Color ColorFor(int priority)
+        {
+            switch (priority)
+            {
+                case 1: return new Color(0.44f, 0.76f, 0.44f);
+                case 2: return new Color(0.78f, 0.84f, 0.50f);
+                case 3: return new Color(0.93f, 0.78f, 0.50f);
+                case 4: return new Color(0.86f, 0.62f, 0.58f);
+                default: return new Color(0.55f, 0.55f, 0.55f, 0.5f);
+            }
+        }
+    }
+}

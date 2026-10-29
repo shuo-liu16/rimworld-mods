@@ -71,6 +71,18 @@ def main():
         os.path.join(ROOT, "mods", "AutoClean", "About", "Preview.png"),
     )
 
+    make(
+        "工作优先级",
+        "Work Sorter",
+        [
+            "技能 / 热情 / 工作速度 / 身体能力综合打分",
+            "叠加地图待办量：待搬运、蓝图、污渍、伤员",
+            "表上预览再一键应用，逐格锁定不被覆盖",
+        ],
+        (226, 156, 92),
+        os.path.join(ROOT, "mods", "WorkSorter", "About", "Preview.png"),
+    )
+
 
 if __name__ == "__main__":
     main()

@@ -18,6 +18,9 @@ if errorlevel 1 exit /b 1
 call :build AutoClean
 if errorlevel 1 exit /b 1
 
+call :build WorkSorter
+if errorlevel 1 exit /b 1
+
 echo.
 echo [OK] All mods built.
 echo Next: run deploy.bat to copy them into the game's Mods folder.

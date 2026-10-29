@@ -1,6 +1,6 @@
 # 发布步骤
 
-这份文档记录把两个 Mod 推到 GitHub 与 Steam 创意工坊的流程。命令按 Windows + Git Bash 写。
+这份文档记录把三个 Mod 推到 GitHub 与 Steam 创意工坊的流程。命令按 Windows + Git Bash 写。
 
 ---
 

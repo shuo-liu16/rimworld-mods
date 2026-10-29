@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LanguageData>
+
+  <WorkSorterTab.label>排班</WorkSorterTab.label>
+  <WorkSorterTab.description>按「谁擅长什么 × 基地现在缺什么」自动排出工作优先级，先预览再一键应用。</WorkSorterTab.description>
+
+</LanguageData>

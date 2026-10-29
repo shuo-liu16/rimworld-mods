@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+
+  <MainButtonDef>
+    <defName>WorkSorterTab</defName>
+    <label>sorter</label>
+    <description>Preview and apply automatically scored work priorities for every colonist.</description>
+    <tabWindowClass>Shuo.WorkSorter.MainTabWindow_WorkSorter</tabWindowClass>
+    <!-- 原版 order：Architect 1 / Work 10 / Schedule 20 / Assign 30 / Animals 40 /
+         Wildlife 50 / Research 60 / World 70 ... 排在「工作」左边，紧挨着它。 -->
+    <order>6</order>
+  </MainButtonDef>
+
+</Defs>
