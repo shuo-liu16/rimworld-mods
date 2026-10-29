@@ -17,12 +17,15 @@ if not exist "%SRC%\" (
 for /d %%D in ("%SRC%\*") do (
   echo Syncing %%~nxD ...
   rem PublishedFileId.txt is written by the game after a Workshop upload.
-  rem /MIR would delete it (source has no such file), so pull it back first.
-  if exist "%DST%\%%~nxD\About\PublishedFileId.txt" (
+  rem /MIR would delete it (the repo has no such file yet), so pull it back
+  rem first - but only when the repo is missing it. The repo copy is the
+  rem authority: once it exists, /MIR overwrites the game copy, which is how
+  rem a wrong/duplicated ID gets corrected.
+  if exist "%DST%\%%~nxD\About\PublishedFileId.txt" if not exist "%SRC%\%%~nxD\About\PublishedFileId.txt" (
     if not exist "%SRC%\%%~nxD\About" mkdir "%SRC%\%%~nxD\About"
     copy /y "%DST%\%%~nxD\About\PublishedFileId.txt" "%SRC%\%%~nxD\About\" >nul
   )
-  robocopy "%%D" "%DST%\%%~nxD" /MIR /XF "PublishedFileId.txt" /NFL /NDL /NJH /NJS /NP >nul
+  robocopy "%%D" "%DST%\%%~nxD" /MIR /NFL /NDL /NJH /NJS /NP >nul
   if errorlevel 8 (
     echo [ERROR] robocopy failed on %%~nxD
     exit /b 1

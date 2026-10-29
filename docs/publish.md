@@ -91,9 +91,17 @@ git commit -m "chore: 记录创意工坊 ID"
 
 | Mod | PublishedFileId |
 | --- | --- |
-| Grid & Thermal Console | 3829566544 |
-| Auto Clean | 未上传 |
+| Grid & Thermal Console | 3828947061 |
+| Auto Clean | 3828945363 |
 | Work Sorter | 未上传 |
+
+> 权威来源是 Steam 的上传日志 `D:\steam\logs\workshop_log.txt`：
+> `Create new workshop item ... : <id> (OK)` 后紧跟 `Upload finished ... : OK`
+> 才算真正发布成功。丢了 ID 文件就到这里捞，不要凭印象填。
+
+**废弃条目 `3829566544`**：2026-10-29 23:41 因 ID 文件丢失，游戏把 Grid & Thermal
+Console 当成新 Mod 又建了一条，且上传在提交 manifest 阶段超时失败，Steam 上留下一个
+空条目。需要在工坊页手动删除，否则玩家会搜到一个打不开的重复项。
 
 ### 更新已发布的 Mod
 
