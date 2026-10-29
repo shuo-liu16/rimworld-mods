@@ -16,7 +16,13 @@ if not exist "%SRC%\" (
 
 for /d %%D in ("%SRC%\*") do (
   echo Syncing %%~nxD ...
-  robocopy "%%D" "%DST%\%%~nxD" /MIR /NFL /NDL /NJH /NJS /NP >nul
+  rem PublishedFileId.txt is written by the game after a Workshop upload.
+  rem /MIR would delete it (source has no such file), so pull it back first.
+  if exist "%DST%\%%~nxD\About\PublishedFileId.txt" (
+    if not exist "%SRC%\%%~nxD\About" mkdir "%SRC%\%%~nxD\About"
+    copy /y "%DST%\%%~nxD\About\PublishedFileId.txt" "%SRC%\%%~nxD\About\" >nul
+  )
+  robocopy "%%D" "%DST%\%%~nxD" /MIR /XF "PublishedFileId.txt" /NFL /NDL /NJH /NJS /NP >nul
   if errorlevel 8 (
     echo [ERROR] robocopy failed on %%~nxD
     exit /b 1
