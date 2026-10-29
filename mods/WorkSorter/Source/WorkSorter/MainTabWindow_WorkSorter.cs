@@ -216,9 +216,24 @@ namespace Shuo.WorkSorter
                 if (ri % 2 == 0)
                     Widgets.DrawBoxSolid(new Rect(0f, rowY, view.width, RowH), new Color(0f, 0f, 0f, 0.04f));
 
+                bool colLocked = comp != null && comp.IsWorkTypeLocked(w);
+                if (colLocked)
+                    Widgets.DrawBoxSolid(nameRect, new Color(0.35f, 0.55f, 0.9f, 0.28f));
+
                 Text.Font = GameFont.Tiny;
                 Widgets.Label(nameRect, WorkSorterEngine.WorkLabel(w));
                 Text.Font = GameFont.Small;
+
+                string name = WorkSorterEngine.WorkLabel(w);
+                TooltipHandler.TipRegion(nameRect, colLocked
+                    ? name + "\n\n整列已锁定：自动排序不会改动这一列。点击解锁。"
+                    : name + "\n\n点击锁定整列——自动排序会完全跳过这项工作，适合想亲手管的活。");
+
+                if (Widgets.ButtonInvisible(nameRect) && comp != null)
+                {
+                    comp.ToggleWorkTypeLock(w);
+                    pendingChanges = CountPending();
+                }
 
                 for (int ci = 0; ci < plan.pawns.Count; ci++)
                 {
@@ -240,10 +255,11 @@ namespace Shuo.WorkSorter
         private void DrawCell(Rect rect, WorkSorterCell c)
         {
             c.locked = comp != null && comp.IsCellLocked(c.pawn, c.workType);
+            bool colLocked = comp != null && comp.IsWorkTypeLocked(c.workType);
 
             // 锁定后这一格以游戏内实际值为准——继续显示"建议值"会让人以为
             // 还没生效，实际上锁定就是不打算再改了。
-            int shown = c.locked ? c.current : c.suggested;
+            int shown = (c.locked || colLocked) ? c.current : c.suggested;
             Color bg = ColorFor(shown);
 
             // 锁定 = 深色粗框；建议与现状不同 = 细框，表示"应用后会变"。
@@ -255,6 +271,11 @@ namespace Shuo.WorkSorter
             {
                 outline = new Color(0.15f, 0.3f, 0.7f, 0.9f);
                 outlineW = 2;
+            }
+            else if (colLocked)
+            {
+                outline = new Color(0.35f, 0.55f, 0.9f, 0.55f);
+                outlineW = 1;
             }
             else if (c.suggested > 0 && c.suggested != c.current)
             {
@@ -287,6 +308,8 @@ namespace Shuo.WorkSorter
             string tip = c.reason ?? "";
             if (c.locked)
                 tip += "\n\n已锁定：自动排序不会改动这一格。点击解锁。";
+            else if (colLocked)
+                tip += "\n\n整列已锁定：这一列都不会被自动改动。点左侧工作名解锁。";
 
             TooltipHandler.TipRegion(rect, tip);
             if (Widgets.ButtonInvisible(rect))
@@ -306,7 +329,7 @@ namespace Shuo.WorkSorter
             }
             else
             {
-                hint = "1 最高 · 4 最低　｜　点格子 = 立即应用并锁定，再点一次解锁　｜　点表头 = 锁定整人　｜　蓝框 = 已锁定，细框 = 应用后会变";
+                hint = "1 最高 · 4 最低　｜　点格子 = 应用并锁定，再点解锁　｜　点表头 = 锁整人　｜　点工作名 = 锁整列　｜　蓝框 = 已锁定，细框 = 应用后会变";
                 if (!comp.appliedOnce)
                     hint += "\n自动排序尚未启动：先点一次「应用全部」，之后才会按间隔自己重排。";
             }
@@ -395,6 +418,8 @@ namespace Shuo.WorkSorter
                     if (c.suggested <= 0 || c.suggested == c.current)
                         continue;
                     // 锁定的格子不会被改，不该算进「待改动」里，否则数字永远归不了零。
+                    if (comp != null && comp.IsWorkTypeLocked(c.workType))
+                        continue;
                     if (comp != null && comp.IsCellLocked(c.pawn, c.workType))
                         continue;
                     n++;

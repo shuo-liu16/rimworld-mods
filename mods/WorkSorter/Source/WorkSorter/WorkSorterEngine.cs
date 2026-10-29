@@ -106,7 +106,13 @@ namespace Shuo.WorkSorter
                     continue;
                 plan.workTypes.Add(w);
             }
-            plan.workTypes.Sort((a, b) => b.naturalPriority.CompareTo(a.naturalPriority));
+            // naturalPriority 可能重复（Mod 新增的工作类型常直接抄原版的值），
+            // 不给 tie-breaker 的话表格行顺序每次重算都可能变。
+            plan.workTypes.Sort((a, b) =>
+            {
+                int c = b.naturalPriority.CompareTo(a.naturalPriority);
+                return c != 0 ? c : string.CompareOrdinal(a.defName, b.defName);
+            });
 
             // —— 3. 需求表 ——
             plan.demands = WorkSorterDemand.Build(map, plan.workTypes);

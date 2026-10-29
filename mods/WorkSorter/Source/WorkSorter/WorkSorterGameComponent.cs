@@ -18,6 +18,10 @@ namespace Shuo.WorkSorter
         private HashSet<long> lockedPawns = new HashSet<long>();
         private HashSet<long> lockedCells = new HashSet<long>();
 
+        // 整列锁定（按 WorkTypeDef 的 defNameHash）。有些工作是玩家想亲手管的，
+        // 逐格锁太麻烦，锁一列更合适。
+        private HashSet<long> lockedWorkTypes = new HashSet<long>();
+
         public int lastApplyTick = -1;
         public int lastChanged;
 
@@ -47,6 +51,7 @@ namespace Shuo.WorkSorter
         {
             Scribe_Collections.Look(ref lockedPawns, "lockedPawns", LookMode.Value);
             Scribe_Collections.Look(ref lockedCells, "lockedCells", LookMode.Value);
+            Scribe_Collections.Look(ref lockedWorkTypes, "lockedWorkTypes", LookMode.Value);
             Scribe_Values.Look(ref lastApplyTick, "lastApplyTick", -1);
             Scribe_Values.Look(ref lastChanged, "lastChanged", 0);
             Scribe_Values.Look(ref appliedOnce, "appliedOnce", false);
@@ -55,6 +60,7 @@ namespace Shuo.WorkSorter
             {
                 if (lockedPawns == null) lockedPawns = new HashSet<long>();
                 if (lockedCells == null) lockedCells = new HashSet<long>();
+                if (lockedWorkTypes == null) lockedWorkTypes = new HashSet<long>();
             }
         }
 
@@ -99,6 +105,19 @@ namespace Shuo.WorkSorter
         {
             if (p != null && w != null)
                 lockedCells.Remove(CellKey(p, w));
+        }
+
+        public bool IsWorkTypeLocked(WorkTypeDef w)
+        {
+            return w != null && lockedWorkTypes.Contains((long)(uint)w.defNameHash);
+        }
+
+        public void ToggleWorkTypeLock(WorkTypeDef w)
+        {
+            if (w == null) return;
+            long key = (long)(uint)w.defNameHash;
+            if (!lockedWorkTypes.Remove(key))
+                lockedWorkTypes.Add(key);
         }
 
         public override void GameComponentTick()

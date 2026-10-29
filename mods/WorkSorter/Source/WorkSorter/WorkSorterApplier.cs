@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using RimWorld;
+using UnityEngine;
 using Verse;
 
 namespace Shuo.WorkSorter
@@ -60,6 +61,8 @@ namespace Shuo.WorkSorter
                             continue;
                         if (p.WorkTypeIsDisabled(c.workType))
                             continue;
+                        if (comp != null && comp.IsWorkTypeLocked(c.workType))
+                            continue;
                         if (comp != null && comp.IsCellLocked(p, c.workType))
                             continue;
 
@@ -80,7 +83,10 @@ namespace Shuo.WorkSorter
                 }
                 catch (Exception e)
                 {
-                    SafeLog.Report("写入 " + p.LabelShort, e);
+                    // 异常处理里再抛异常会直接冒到游戏主循环，所以取名字也要兜住。
+                    string who = "?";
+                    try { who = p.LabelShort; } catch { }
+                    SafeLog.Report("写入 " + who, e);
                 }
             }
 
@@ -105,7 +111,7 @@ namespace Shuo.WorkSorter
             if (p.WorkTypeIsDisabled(w))
                 return false;
 
-            int pr = MathfExt.ClampInt(priority, 1, WorkSorterEngine.MaxPriority);
+            int pr = Mathf.Clamp(priority, 1, WorkSorterEngine.MaxPriority);
             try
             {
                 p.workSettings.EnableAndInitializeIfNotAlreadyInitialized();
@@ -117,19 +123,6 @@ namespace Shuo.WorkSorter
                 SafeLog.Report("写入单格", e);
                 return false;
             }
-        }
-    }
-
-    /// <summary>
-    /// Mathf.Clamp 只有 float 版，int 用这个小工具避免到处写强转。
-    /// </summary>
-    internal static class MathfExt
-    {
-        public static int ClampInt(int v, int min, int max)
-        {
-            if (v < min) return min;
-            if (v > max) return max;
-            return v;
         }
     }
 }
