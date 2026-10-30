@@ -359,6 +359,30 @@ public MyComp(Game game) { }        // FillComponents 用
 
 > 排查提示：`GetComponent<T>()` 返回 null 时不要急着怪 Harmony。先看 `Player.log` 有没有 `Could not instantiate a GameComponent`。
 
+### 给已有建筑追加 Comp：存档安全（但字段名要唯一）
+
+1.7 的存档里，comp 的字段是**平铺在 `<thing>` 元素下**的，不是 `<comps><li Class="...">` 那种结构：
+
+```xml
+<thing>
+  <def>Heater</def>
+  <id>Thing_Heater123</id>
+  <pos>(12, 0, 34)</pos>
+  <targetTemperature>-24</targetTemperature>
+  <glowOn>True</glowOn>
+  <thermalGroup>温控组 1</thermalGroup>
+  <thermalTargetTemp>21</thermalTargetTemp>
+</thing>
+```
+
+读档时每个 comp 的 `PostExposeData` 是**按字段名**在自己身上取值，找不到就用 `Scribe_Values.Look` 的默认值。所以：
+
+- **新增 comp 对旧存档完全安全**——旧存档里没有它的字段，读出来就是默认值，不会错位；
+- 代价是**字段名必须全局唯一**。平铺意味着 `group`、`mode` 这种通用名字很容易和别的 Mod 撞，撞了就是两个 comp 抢同一个值。本仓库统一加前缀：`thermal*` / `power*`；
+- 顺序上仍然把 `comps.Add(...)` 放在末尾（XML patch 全部跑完后再执行），纯粹为了顺序稳定、便于排查，不是功能必需。
+
+验证方法：解一个存档，看某个建筑 `<thing>` 的直接子节点里有没有你的字段名。`grep` 一下字段名比读代码快。
+
 ### 编译配置要点
 ```xml
 <TargetFramework>net10.0</TargetFramework>

@@ -170,10 +170,10 @@ namespace Shuo.GridThermal
         public bool anySwitchable;
 
         // 面板每帧都读，字符串在这里一次算好，绘制阶段不再拼接。
+        public string nameText = "";      // 截断后的组名，长名字不会溢到下一列
         public string membersText = "0 台";
         public string genText = "0 W";
         public string useText = "0 W";
-        public string netText = "0 W";
         public string storeText = "0 / 0";
         public string stateText = "已关闭";
         public string toggleText = "全部开启";
@@ -197,7 +197,12 @@ namespace Shuo.GridThermal
 
                 total++;
 
+                // 每台只取一次组件引用。CanSwitch / IsOn 内部各要两次 TryGetComp，
+                // 组里几十台时会被放大成几百次查找；这里用局部变量把 7 次压到 3 次。
+                CompFlickable flick = m.Flickable;
                 CompPowerTrader pt = m.PowerTrader;
+                CompPowerBattery bat = m.Battery;
+
                 if (pt != null)
                 {
                     float p = pt.PowerOutput;
@@ -207,17 +212,16 @@ namespace Shuo.GridThermal
                         use -= p;
                 }
 
-                CompPowerBattery b = m.Battery;
-                if (b != null)
+                if (bat != null)
                 {
-                    store += b.StoredEnergy;
-                    cap += b.Props.storedEnergyMax;
+                    store += bat.StoredEnergy;
+                    cap += bat.Props.storedEnergyMax;
                 }
 
-                if (m.CanSwitch)
+                if (flick != null || pt != null)
                 {
                     switchable++;
-                    if (m.IsOn)
+                    if (flick != null ? flick.SwitchIsOn : pt.PowerOn)
                         onCount++;
                 }
             }
@@ -227,10 +231,11 @@ namespace Shuo.GridThermal
             anyOn = onCount > 0;
             allOn = switchable > 0 && onCount == switchable;
 
+            // 组名最长 24 字，而这一列只有 180px：不截断会盖住「成员」列。
+            nameText = Truncate(name, 12);
             membersText = total + " 台";
             genText = gen.ToString("0") + " W";
             useText = use.ToString("0") + " W";
-            netText = net.ToString("+0;-0;0") + " W";
             storeText = store.ToString("0") + " / " + cap.ToString("0");
 
             if (!anySwitchable)
@@ -253,6 +258,13 @@ namespace Shuo.GridThermal
                 stateText = "已关闭";
                 toggleText = "全部开启";
             }
+        }
+
+        private static string Truncate(string s, int max)
+        {
+            if (string.IsNullOrEmpty(s))
+                return "";
+            return s.Length <= max ? s : s.Substring(0, max) + "…";
         }
     }
 
@@ -440,8 +452,11 @@ namespace Shuo.GridThermal
     /// </summary>
     public class Dialog_RenamePowerGroup : Window
     {
+        private const string FieldName = "gridThermalPowerGroupName";
+
         private readonly PowerGroupInfo info;
         private string curName;
+        private bool submitting;
 
         public override Vector2 InitialSize
         {
@@ -453,7 +468,8 @@ namespace Shuo.GridThermal
             this.info = info;
             curName = info == null ? "" : info.name;
             doCloseX = true;
-            closeOnAccept = true;
+            // 不让基类自己关窗口：回车要先过改名逻辑，重名时窗口必须留着。
+            closeOnAccept = false;
             closeOnCancel = true;
             absorbInputAroundWindow = true;
         }
@@ -461,27 +477,59 @@ namespace Shuo.GridThermal
         public override void PostOpen()
         {
             base.PostOpen();
-            GUI.SetNextControlName("powerGroupNameField");
-            GUI.FocusControl("powerGroupNameField");
+            GUI.SetNextControlName(FieldName);
+            GUI.FocusControl(FieldName);
+        }
+
+        public override void OnAcceptKeyPressed()
+        {
+            base.OnAcceptKeyPressed();
+            TrySubmit();
+        }
+
+        private void TrySubmit()
+        {
+            // 焦点在输入框时，Window 的 Enter 分支和 DoWindowContents 会各读一次同一个事件，
+            // 用这个标志保证只提交一次。
+            if (submitting)
+                return;
+
+            submitting = true;
+            if (PowerGroups.Rename(info, curName))
+                Close();
+            else
+                submitting = false;
         }
 
         public override void DoWindowContents(Rect inRect)
         {
-            Widgets.Label(new Rect(0f, 0f, inRect.width, 24f), "分组名称");
-            curName = Widgets.TextField(new Rect(0f, 28f, inRect.width, 30f), curName ?? "");
-
-            bool acceptByKey = Event.current.type == EventType.KeyDown
-                && (Event.current.keyCode == KeyCode.Return || Event.current.keyCode == KeyCode.KeypadEnter);
-
-            if (Widgets.ButtonText(new Rect(0f, inRect.height - 32f, 120f, 30f), "确定") || acceptByKey)
+            // 窗口里抛异常会打断整段 GUI 绘制，输入框可能卡在半截状态；出问题就关掉窗口。
+            try
             {
-                if (PowerGroups.Rename(info, curName))
-                    Close();
-                return;
-            }
+                Widgets.Label(new Rect(0f, 0f, inRect.width, 24f), "分组名称");
 
-            if (Widgets.ButtonText(new Rect(128f, inRect.height - 32f, 120f, 30f), "取消"))
+                // 每帧都要重新登记控件名，否则 PostOpen 里的 FocusControl 找不到目标，
+                // 打开窗口还得手点一下输入框才能打字。
+                GUI.SetNextControlName(FieldName);
+                curName = Widgets.TextField(new Rect(0f, 28f, inRect.width, 30f), curName ?? "");
+
+                bool acceptByKey = Event.current.type == EventType.KeyDown
+                    && (Event.current.keyCode == KeyCode.Return || Event.current.keyCode == KeyCode.KeypadEnter);
+
+                if (Widgets.ButtonText(new Rect(0f, inRect.height - 32f, 120f, 30f), "确定") || acceptByKey)
+                {
+                    TrySubmit();
+                    return;
+                }
+
+                if (Widgets.ButtonText(new Rect(128f, inRect.height - 32f, 120f, 30f), "取消"))
+                    Close();
+            }
+            catch (System.Exception e)
+            {
+                SafeLog.Report("电力分组改名窗口", e);
                 Close();
+            }
         }
     }
 }

@@ -521,7 +521,7 @@ namespace Shuo.GridThermal
 
         private const float ColPgName = 0f;
         private const float ColPgMembers = 186f;
-        private const float ColPgGen = 240f;
+        private const float ColPgGen = 244f;
         private const float ColPgUse = 316f;
         private const float ColPgStore = 392f;
         private const float ColPgState = 478f;
@@ -561,7 +561,7 @@ namespace Shuo.GridThermal
             Widgets.BeginScrollView(listRect, ref scrollPosPowerGroup, viewRect);
 
             Widgets.Label(new Rect(ColPgName, 0f, 180f, RowHeight), "分组");
-            Widgets.Label(new Rect(ColPgMembers, 0f, 55f, RowHeight), "成员");
+            Widgets.Label(new Rect(ColPgMembers, 0f, 50f, RowHeight), "成员");
             Widgets.Label(new Rect(ColPgGen, 0f, 70f, RowHeight), "发电");
             Widgets.Label(new Rect(ColPgUse, 0f, 70f, RowHeight), "耗电");
             Widgets.Label(new Rect(ColPgStore, 0f, 80f, RowHeight), "储能");
@@ -589,8 +589,8 @@ namespace Shuo.GridThermal
                 if (i % 2 == 1)
                     Widgets.DrawHighlight(new Rect(0f, y, viewRect.width, RowHeight + 4f));
 
-                Widgets.Label(new Rect(ColPgName, y, 180f, RowHeight), k);
-                Widgets.Label(new Rect(ColPgMembers, y, 55f, RowHeight), info.membersText);
+                Widgets.Label(new Rect(ColPgName, y, 180f, RowHeight), info.nameText);
+                Widgets.Label(new Rect(ColPgMembers, y, 50f, RowHeight), info.membersText);
                 Widgets.Label(new Rect(ColPgGen, y, 70f, RowHeight), info.genText);
                 Widgets.Label(new Rect(ColPgUse, y, 70f, RowHeight), info.useText);
                 Widgets.Label(new Rect(ColPgStore, y, 80f, RowHeight), info.storeText);
@@ -600,10 +600,21 @@ namespace Shuo.GridThermal
                 Widgets.Label(new Rect(ColPgState, y, 60f, RowHeight), info.stateText);
                 GUI.color = old;
 
-                if (Widgets.ButtonText(new Rect(ColPgToggle, y + 2f, 76f, 24f), info.toggleText))
+                // 整组只有电池时没有开关可切，画一个按钮会让人以为点得动。
+                if (info.anySwitchable)
                 {
-                    key = k;
-                    act = PowerAction.Toggle;
+                    if (Widgets.ButtonText(new Rect(ColPgToggle, y + 2f, 76f, 24f), info.toggleText))
+                    {
+                        key = k;
+                        act = PowerAction.Toggle;
+                    }
+                }
+                else
+                {
+                    Color oldBtn = GUI.color;
+                    GUI.color = ColorShort;
+                    LabelCentered(new Rect(ColPgToggle, y, 76f, RowHeight), info.toggleText);
+                    GUI.color = oldBtn;
                 }
                 if (Widgets.ButtonText(new Rect(ColPgRename, y + 2f, 50f, 24f), "改名"))
                 {
