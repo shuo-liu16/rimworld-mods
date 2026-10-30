@@ -29,6 +29,63 @@ namespace Shuo.GridThermal
                 // 自动挂载失败也不影响 Heater / Cooler 的 XML 补丁已经生效的那部分。
                 SafeLog.Report("自动挂载温控组件", e);
             }
+
+            try
+            {
+                AutoAttachToPowerDevices();
+            }
+            catch (Exception e)
+            {
+                SafeLog.Report("自动挂载电力分组组件", e);
+            }
+        }
+
+        /// <summary>
+        /// 给所有会发电、会耗电、会储电的建筑挂上电力分组组件。
+        ///
+        /// 判定按 compClass 而不是 CompProperties 的类型：1.7 里 CompPowerTrader 的
+        /// 属性类就叫 CompProperties_Power，电线等也用同一个类，光看属性类分不出来；
+        /// 而 IsAssignableFrom 还能覆盖第三方 Mod 继承 CompPowerTrader 的设备。
+        /// </summary>
+        private static void AutoAttachToPowerDevices()
+        {
+            int added = 0;
+            foreach (ThingDef def in DefDatabase<ThingDef>.AllDefs)
+            {
+                if (def.category != ThingCategory.Building)
+                    continue;
+
+                List<CompProperties> comps = def.comps;
+                if (comps == null || comps.Count == 0)
+                    continue;
+
+                bool hasPower = false;
+                bool hasOurs = false;
+                for (int i = 0; i < comps.Count; i++)
+                {
+                    CompProperties cp = comps[i];
+                    if (cp == null || cp.compClass == null)
+                        continue;
+                    if (cp.compClass == typeof(CompPowerGroup))
+                    {
+                        hasOurs = true;
+                    }
+                    else if (typeof(CompPowerTrader).IsAssignableFrom(cp.compClass)
+                        || typeof(CompPowerBattery).IsAssignableFrom(cp.compClass))
+                    {
+                        hasPower = true;
+                    }
+                }
+
+                if (!hasPower || hasOurs)
+                    continue;
+
+                comps.Add(new CompProperties_PowerGroup());
+                added++;
+            }
+
+            if (added > 0)
+                Log.Message("[GridThermal] 已为 " + added + " 种电力设施自动挂载分组组件。");
         }
 
         private static void AutoAttachToTempDevices()

@@ -31,6 +31,7 @@ namespace Shuo.GridThermal
 
         private int page;
         private Vector2 scrollPos = Vector2.zero;
+        private Vector2 scrollPosPowerGroup = Vector2.zero;
 
         // 窗口高度按「当前页实际有几行」算，不写死。
         // 写死一个偏大的固定值，早期殖民地只有一两个电网时，多出来的高度
@@ -66,6 +67,12 @@ namespace Shuo.GridThermal
                     }
                     // 汇总行(32) + 表头(28) + 4 + 数据行 + 底部余量
                     bodyH = 32f + RowHeight + 4f + rows * RowHeight + 14f;
+                }
+                else if (page == 2)
+                {
+                    int rows = map == null ? 0 : PowerGroups.ScanSorted(map).Count;
+                    // 顶部两行说明(46) + 表头(28) + 4 + 每组 32 + 底部余量（与温控页同构）
+                    bodyH = 46f + RowHeight + 4f + rows * (RowHeight + 4f) + 14f;
                 }
                 else
                 {
@@ -140,13 +147,21 @@ namespace Shuo.GridThermal
                 scrollPos = Vector2.zero;
                 ResizeToContent();
             }
+            if (Widgets.ButtonText(new Rect(inRect.x + 212f, inRect.y, 100f, tabH), "电力分组") && page != 2)
+            {
+                page = 2;
+                scrollPosPowerGroup = Vector2.zero;
+                ResizeToContent();
+            }
 
             Rect body = new Rect(inRect.x, inRect.y + tabH + 10f, inRect.width,
                 Mathf.Max(80f, inRect.height - tabH - 10f));
             if (page == 0)
                 DrawPower(body);
-            else
+            else if (page == 1)
                 DrawThermal(body);
+            else
+                DrawPowerGroups(body);
         }
 
         private static void DrawFault(Rect inRect, System.Exception e)
@@ -496,7 +511,169 @@ namespace Shuo.GridThermal
                     break;
                 case Action.Disband:
                     ThermalGroups.Disband(target);
+                    // 解散后少一行，窗口跟着收，否则底栏上方会留一条空白。
+                    ResizeToContent();
                     break;
+            }
+        }
+
+        // ---------- 电力分组 ----------
+
+        private const float ColPgName = 0f;
+        private const float ColPgMembers = 186f;
+        private const float ColPgGen = 240f;
+        private const float ColPgUse = 316f;
+        private const float ColPgStore = 392f;
+        private const float ColPgState = 478f;
+        private const float ColPgToggle = 540f;
+        private const float ColPgRename = 622f;
+        private const float ColPgSelect = 678f;
+        private const float ColPgDisband = 734f;
+
+        private enum PowerAction { None, Toggle, Rename, Select, Disband }
+
+        private void DrawPowerGroups(Rect r)
+        {
+            Map map = Find.CurrentMap;
+            if (map == null)
+            {
+                Widgets.Label(r, "没有打开的地图。");
+                return;
+            }
+
+            Widgets.Label(new Rect(r.x, r.y, r.width, 20f),
+                "把发电设备与用电设备归为一组，整组一键开关；组名可以自定义");
+            Widgets.Label(new Rect(r.x, r.y + 20f, r.width, 20f),
+                "开关走建筑自身的电源开关，效果与手动点开一样；电池只参与统计，不能断电");
+
+            List<KeyValuePair<string, PowerGroupInfo>> groups = PowerGroups.ScanSorted(map);
+            Rect listRect = new Rect(r.x, r.y + 46f, r.width, Mathf.Max(60f, r.height - 46f));
+
+            if (groups.Count == 0)
+            {
+                Widgets.Label(new Rect(r.x, r.y + 54f, r.width, 24f),
+                    "还没有任何电力分组。选中任意发电或用电设备，点「电力分组」建组。");
+                return;
+            }
+
+            float viewH = Mathf.Max(listRect.height, groups.Count * (RowHeight + 4f) + 40f);
+            Rect viewRect = new Rect(0f, 0f, listRect.width - 22f, viewH);
+            Widgets.BeginScrollView(listRect, ref scrollPosPowerGroup, viewRect);
+
+            Widgets.Label(new Rect(ColPgName, 0f, 180f, RowHeight), "分组");
+            Widgets.Label(new Rect(ColPgMembers, 0f, 55f, RowHeight), "成员");
+            Widgets.Label(new Rect(ColPgGen, 0f, 70f, RowHeight), "发电");
+            Widgets.Label(new Rect(ColPgUse, 0f, 70f, RowHeight), "耗电");
+            Widgets.Label(new Rect(ColPgStore, 0f, 80f, RowHeight), "储能");
+            Widgets.Label(new Rect(ColPgState, 0f, 60f, RowHeight), "状态");
+            Widgets.DrawLineHorizontal(0f, RowHeight, viewRect.width);
+
+            string key = null;
+            PowerAction act = PowerAction.None;
+
+            float y = RowHeight + 4f;
+            float visibleTop = scrollPosPowerGroup.y;
+            float visibleBottom = scrollPosPowerGroup.y + listRect.height;
+            for (int i = 0; i < groups.Count; i++)
+            {
+                string k = groups[i].Key;
+                PowerGroupInfo info = groups[i].Value;
+
+                // 滚出可视区的组不构造控件，组多的时候省一轮 GUI 调用。
+                if (y + RowHeight + 4f < visibleTop || y > visibleBottom)
+                {
+                    y += RowHeight + 4f;
+                    continue;
+                }
+
+                if (i % 2 == 1)
+                    Widgets.DrawHighlight(new Rect(0f, y, viewRect.width, RowHeight + 4f));
+
+                Widgets.Label(new Rect(ColPgName, y, 180f, RowHeight), k);
+                Widgets.Label(new Rect(ColPgMembers, y, 55f, RowHeight), info.membersText);
+                Widgets.Label(new Rect(ColPgGen, y, 70f, RowHeight), info.genText);
+                Widgets.Label(new Rect(ColPgUse, y, 70f, RowHeight), info.useText);
+                Widgets.Label(new Rect(ColPgStore, y, 80f, RowHeight), info.storeText);
+
+                Color old = GUI.color;
+                GUI.color = info.allOn ? ColorOk : (info.anyOn ? ColorDrain : ColorShort);
+                Widgets.Label(new Rect(ColPgState, y, 60f, RowHeight), info.stateText);
+                GUI.color = old;
+
+                if (Widgets.ButtonText(new Rect(ColPgToggle, y + 2f, 76f, 24f), info.toggleText))
+                {
+                    key = k;
+                    act = PowerAction.Toggle;
+                }
+                if (Widgets.ButtonText(new Rect(ColPgRename, y + 2f, 50f, 24f), "改名"))
+                {
+                    key = k;
+                    act = PowerAction.Rename;
+                }
+                if (Widgets.ButtonText(new Rect(ColPgSelect, y + 2f, 50f, 24f), "选中"))
+                {
+                    key = k;
+                    act = PowerAction.Select;
+                }
+                if (Widgets.ButtonText(new Rect(ColPgDisband, y + 2f, 50f, 24f), "解散"))
+                {
+                    key = k;
+                    act = PowerAction.Disband;
+                }
+
+                y += RowHeight + 4f;
+            }
+
+            Widgets.EndScrollView();
+
+            if (key == null)
+                return;
+
+            PowerGroupInfo target;
+            if (!PowerGroups.Scan(map).TryGetValue(key, out target))
+                return;
+
+            switch (act)
+            {
+                case PowerAction.Toggle:
+                    // 只要还有开着的就整组关掉；全关状态点一下整组打开。
+                    PowerGroups.SetPower(target, !target.anyOn);
+                    break;
+                case PowerAction.Rename:
+                    Find.WindowStack.Add(new Dialog_RenamePowerGroup(target));
+                    break;
+                case PowerAction.Select:
+                    SelectPowerMembers(target.members);
+                    break;
+                case PowerAction.Disband:
+                    PowerGroups.Disband(target);
+                    // 少了一行就该收一次窗口，否则底部会多出一条空白背景。
+                    ResizeToContent();
+                    break;
+            }
+        }
+
+        private static void SelectPowerMembers(List<CompPowerGroup> members)
+        {
+            try
+            {
+                Find.Selector.ClearSelection();
+                Map map = Find.CurrentMap;
+                int n = 0;
+                for (int i = 0; i < members.Count && n < MaxSelect; i++)
+                {
+                    Thing t = members[i].parent;
+                    if (t == null || !t.Spawned || t.def == null || !t.def.selectable)
+                        continue;
+                    if (t.Map != map)
+                        continue;
+                    Find.Selector.Select(t, false, false);
+                    n++;
+                }
+            }
+            catch (System.Exception e)
+            {
+                SafeLog.Report("选中电力设备", e);
             }
         }
 
