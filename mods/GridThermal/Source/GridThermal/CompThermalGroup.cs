@@ -421,6 +421,7 @@ namespace Shuo.GridThermal
 
         // 显示用字符串一并缓存：OnGUI 每帧都读，现场格式化会产生大量小对象。
         public string nameText = "";     // 截断后的组名，长名字不会溢到下一列
+        private string nameCached;       // nameText 是按哪个名字算出来的
         public string membersText = "0 台";
         public string avgText = "0 °C";
         public string targetText = "21 °C";
@@ -442,17 +443,15 @@ namespace Shuo.GridThermal
             avgTemp = n == 0 ? 0f : sum / n;
 
             // 温控页「分组」列只有 130px，10 个全角字约 120px，再长就压到「成员」列了。
-            nameText = TruncateName(name, 10);
+            // 名字没变就复用上次的字符串：这一栏每 0.5 秒重算一次，没必要反复分配。
+            if (name != nameCached)
+            {
+                nameCached = name;
+                nameText = GroupText.ForColumn(name, 10);
+            }
             membersText = members.Count + " 台";
             avgText = avgTemp.ToString("0") + " °C";
             RefreshTexts();
-        }
-
-        private static string TruncateName(string s, int max)
-        {
-            if (string.IsNullOrEmpty(s))
-                return "";
-            return s.Length <= max ? s : s.Substring(0, max) + "…";
         }
 
         public void RefreshTexts()
@@ -634,14 +633,12 @@ namespace Shuo.GridThermal
             if (info == null)
                 return true;
 
-            newName = (newName ?? "").Trim();
+            newName = GroupText.ClampInput(newName);
             if (newName.Length == 0)
             {
                 Messages.Message("分组名不能为空。", MessageTypeDefOf.RejectInput, false);
                 return false;
             }
-            if (newName.Length > 24)
-                newName = newName.Substring(0, 24);
             if (newName == info.name)
                 return true;
 
