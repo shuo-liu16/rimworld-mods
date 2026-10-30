@@ -19,5 +19,21 @@
   <loadAfter>
     <li>brrainz.harmony</li>
   </loadAfter>
-  <description>每天在设定时刻自动清除居住区内的污渍，不需要小人动手。时刻、范围、提示均可在 Mod 设置里调整，另有「立即清扫一次」用于测试。</description>
+  <description>每天在设定时刻自动清除居住区内的污渍：不需要小人动手，不消耗资源，也不会因为一次删太多实体卡一下。
+
+【功能】
+· 每天定时清扫，时刻可调（默认 06:00），按地图本地时间走
+· 范围可选「仅居住区」或「全图」，清扫后是否弹提示可关
+· 只有血迹、泥土、动物粪、碎石堆这类已落地的污渍会被清掉，不留掉落物
+· 附「立即清扫一次」，用来验证设置是否生效
+
+【用法】
+选项 → Mod 设置 → 自动清扫。开箱即用，装好就生效，不需要在存档里做任何操作；想停就在同一页关掉总开关。
+
+【贡献】
+Bug 与建议走 GitHub Issues（可贴日志）：
+https://github.com/shuo-liu16/rimworld-mods/issues
+源码 MIT，位于仓库 mods/AutoClean，改完请跑 build.bat 后连 DLL 一起提 PR。
+
+需要 RimWorld 1.7 与 Harmony。</description>
 </ModMetaData>
