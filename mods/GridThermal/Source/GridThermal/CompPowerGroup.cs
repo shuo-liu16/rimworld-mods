@@ -377,6 +377,27 @@ namespace Shuo.GridThermal
             return "电力组 " + i;
         }
 
+        /// <summary>
+        /// 实时判断「组里是否还有开着的设备」。
+        /// 不能用 info.anyOn：那是缓存快照，最多 0.5 秒前算的。玩家刚在场景里手动关掉一台，
+        /// 缓存还是旧的，点「全部关闭」会变成「全部开启」——方向完全反了。
+        /// </summary>
+        public static bool AnyOn(PowerGroupInfo info)
+        {
+            if (info == null)
+                return false;
+
+            for (int i = 0; i < info.members.Count; i++)
+            {
+                CompPowerGroup m = info.members[i];
+                if (m == null || m.parent == null || !m.parent.Spawned || !m.CanSwitch)
+                    continue;
+                if (m.IsOn)
+                    return true;
+            }
+            return false;
+        }
+
         /// <summary>整组开/关。逐台 try/catch 在 SetPower 内部，一台失败不影响其它。</summary>
         public static void SetPower(PowerGroupInfo info, bool on)
         {

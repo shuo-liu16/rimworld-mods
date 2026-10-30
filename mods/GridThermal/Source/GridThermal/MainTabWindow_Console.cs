@@ -648,7 +648,8 @@ namespace Shuo.GridThermal
             {
                 case PowerAction.Toggle:
                     // 只要还有开着的就整组关掉；全关状态点一下整组打开。
-                    PowerGroups.SetPower(target, !target.anyOn);
+                    // 现场状态实时读，不用缓存快照——见 PowerGroups.AnyOn 的注释。
+                    PowerGroups.SetPower(target, !PowerGroups.AnyOn(target));
                     break;
                 case PowerAction.Rename:
                     Find.WindowStack.Add(new Dialog_RenamePowerGroup(target));
