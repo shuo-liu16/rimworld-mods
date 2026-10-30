@@ -127,23 +127,87 @@ namespace Shuo.GridThermal
         {
             List<FloatMenuOption> opts = new List<FloatMenuOption>();
             Map map = parent == null ? null : parent.Map;
+            int batch = CountSelectedPowerDevices();
+            string hint = batch > 1 ? "　→ " + batch + " 台选中" : "";
 
             foreach (KeyValuePair<string, PowerGroupInfo> kv in PowerGroups.Scan(map))
             {
                 string g = kv.Key;
                 PowerGroupInfo info = kv.Value;
                 opts.Add(new FloatMenuOption(
-                    g + "（" + info.liveCount + " 台）",
-                    delegate { SetGroup(g); }));
+                    g + "（" + info.liveCount + " 台）" + hint,
+                    delegate { ApplyGroupToSelection(g); }));
             }
 
-            opts.Add(new FloatMenuOption("移出分组", delegate { SetGroup(""); }));
-            opts.Add(new FloatMenuOption("新建分组", delegate
+            opts.Add(new FloatMenuOption("移出分组" + hint, delegate { ApplyGroupToSelection(""); }));
+            opts.Add(new FloatMenuOption("新建分组" + hint, delegate
             {
-                SetGroup(PowerGroups.NextName(map));
+                ApplyGroupToSelection(PowerGroups.NextName(map));
             }));
 
             Find.WindowStack.Add(new FloatMenu(opts));
+        }
+
+        /// <summary>当前选中的电力设备数量（至少算自己 1 台）。</summary>
+        private int CountSelectedPowerDevices()
+        {
+            try
+            {
+                List<object> sel = Find.Selector.SelectedObjects;
+                if (sel == null)
+                    return 1;
+
+                int n = 0;
+                for (int i = 0; i < sel.Count; i++)
+                {
+                    Thing t = sel[i] as Thing;
+                    if (t == null || t.Map != parent.Map)
+                        continue;
+                    if (t.TryGetComp<CompPowerGroup>() != null)
+                        n++;
+                }
+                return n < 1 ? 1 : n;
+            }
+            catch (System.Exception e)
+            {
+                SafeLog.Report("统计选中的电力设备", e);
+                return 1;
+            }
+        }
+
+        /// <summary>
+        /// 多选时把整组操作应用到所有选中的同类设备，单选时只改自己。
+        /// RimWorld 的多选 gizmo 只画一次、也只回调一次，所以必须自己去遍历选中集合。
+        /// </summary>
+        private void ApplyGroupToSelection(string groupName)
+        {
+            int applied = 0;
+            try
+            {
+                List<object> sel = Find.Selector.SelectedObjects;
+                if (sel != null && sel.Count > 1)
+                {
+                    for (int i = 0; i < sel.Count; i++)
+                    {
+                        Thing t = sel[i] as Thing;
+                        if (t == null || t.Map != parent.Map)
+                            continue;
+                        CompPowerGroup c = t.TryGetComp<CompPowerGroup>();
+                        if (c == null)
+                            continue;
+                        c.SetGroup(groupName);
+                        applied++;
+                    }
+                }
+            }
+            catch (System.Exception e)
+            {
+                SafeLog.Report("批量应用电力分组", e);
+            }
+
+            // 选中的东西里没有同类设备时，至少把当前这台改掉，别点了没反应。
+            if (applied == 0)
+                SetGroup(groupName);
         }
 
         public void SetGroup(string newGroup)
@@ -475,93 +539,6 @@ namespace Shuo.GridThermal
 
             Invalidate(info.map);
             return true;
-        }
-    }
-
-    /// <summary>
-    /// 改名对话框。RimWorld 自带的 Dialog_Rename 只接受 IRenameable，
-    /// 而分组不是 Thing，套不上；这里写个轻量版，回车即确认。
-    /// </summary>
-    public class Dialog_RenamePowerGroup : Window
-    {
-        private const string FieldName = "gridThermalPowerGroupName";
-
-        private readonly PowerGroupInfo info;
-        private string curName;
-        private bool submitting;
-
-        public override Vector2 InitialSize
-        {
-            get { return new Vector2(380f, 150f); }
-        }
-
-        public Dialog_RenamePowerGroup(PowerGroupInfo info)
-        {
-            this.info = info;
-            curName = info == null ? "" : info.name;
-            doCloseX = true;
-            // 不让基类自己关窗口：回车要先过改名逻辑，重名时窗口必须留着。
-            closeOnAccept = false;
-            closeOnCancel = true;
-            absorbInputAroundWindow = true;
-        }
-
-        public override void PostOpen()
-        {
-            base.PostOpen();
-            GUI.SetNextControlName(FieldName);
-            GUI.FocusControl(FieldName);
-        }
-
-        public override void OnAcceptKeyPressed()
-        {
-            base.OnAcceptKeyPressed();
-            TrySubmit();
-        }
-
-        private void TrySubmit()
-        {
-            // 焦点在输入框时，Window 的 Enter 分支和 DoWindowContents 会各读一次同一个事件，
-            // 用这个标志保证只提交一次。
-            if (submitting)
-                return;
-
-            submitting = true;
-            if (PowerGroups.Rename(info, curName))
-                Close();
-            else
-                submitting = false;
-        }
-
-        public override void DoWindowContents(Rect inRect)
-        {
-            // 窗口里抛异常会打断整段 GUI 绘制，输入框可能卡在半截状态；出问题就关掉窗口。
-            try
-            {
-                Widgets.Label(new Rect(0f, 0f, inRect.width, 24f), "分组名称");
-
-                // 每帧都要重新登记控件名，否则 PostOpen 里的 FocusControl 找不到目标，
-                // 打开窗口还得手点一下输入框才能打字。
-                GUI.SetNextControlName(FieldName);
-                curName = Widgets.TextField(new Rect(0f, 28f, inRect.width, 30f), curName ?? "");
-
-                bool acceptByKey = Event.current.type == EventType.KeyDown
-                    && (Event.current.keyCode == KeyCode.Return || Event.current.keyCode == KeyCode.KeypadEnter);
-
-                if (Widgets.ButtonText(new Rect(0f, inRect.height - 32f, 120f, 30f), "确定") || acceptByKey)
-                {
-                    TrySubmit();
-                    return;
-                }
-
-                if (Widgets.ButtonText(new Rect(128f, inRect.height - 32f, 120f, 30f), "取消"))
-                    Close();
-            }
-            catch (System.Exception e)
-            {
-                SafeLog.Report("电力分组改名窗口", e);
-                Close();
-            }
         }
     }
 }

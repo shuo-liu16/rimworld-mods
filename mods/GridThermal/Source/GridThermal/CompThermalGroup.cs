@@ -322,28 +322,96 @@ namespace Shuo.GridThermal
         {
             List<FloatMenuOption> opts = new List<FloatMenuOption>();
             Map map = parent == null ? null : parent.Map;
+            int batch = CountSelectedTempDevices();
+            string hint = batch > 1 ? "　→ " + batch + " 台选中" : "";
 
             foreach (KeyValuePair<string, ThermalGroupInfo> kv in ThermalGroups.Scan(map))
             {
                 string g = kv.Key;
                 ThermalGroupInfo info = kv.Value;
                 opts.Add(new FloatMenuOption(
-                    g + "（" + info.members.Count + " 台）",
-                    delegate { SetGroup(g, info.target, info.altTarget, info.mode); }));
+                    g + "（" + info.members.Count + " 台）" + hint,
+                    delegate { ApplyGroupToSelection(g, info.target, info.altTarget, info.mode); }));
             }
 
-            opts.Add(new FloatMenuOption("移出分组", delegate { SetGroup("", 21f, 18f, ModeUniform); }));
-            opts.Add(new FloatMenuOption("新建分组", delegate
+            opts.Add(new FloatMenuOption("移出分组" + hint,
+                delegate { ApplyGroupToSelection("", 21f, 18f, ModeUniform); }));
+            opts.Add(new FloatMenuOption("新建分组" + hint, delegate
             {
-                SetGroup(ThermalGroups.NextName(map), 21f, 18f, ModeUniform);
+                ApplyGroupToSelection(ThermalGroups.NextName(map), 21f, 18f, ModeUniform);
             }));
 
             Find.WindowStack.Add(new FloatMenu(opts));
+        }
+
+        /// <summary>当前选中的温控设备数量（至少算自己 1 台）。</summary>
+        private int CountSelectedTempDevices()
+        {
+            try
+            {
+                List<object> sel = Find.Selector.SelectedObjects;
+                if (sel == null)
+                    return 1;
+
+                int n = 0;
+                for (int i = 0; i < sel.Count; i++)
+                {
+                    Thing t = sel[i] as Thing;
+                    if (t == null || t.Map != parent.Map)
+                        continue;
+                    if (t.TryGetComp<CompThermalGroup>() != null)
+                        n++;
+                }
+                return n < 1 ? 1 : n;
+            }
+            catch (System.Exception e)
+            {
+                SafeLog.Report("统计选中的温控设备", e);
+                return 1;
+            }
+        }
+
+        /// <summary>
+        /// 多选时应用到所有选中的温控设备，单选时只改自己。
+        /// RimWorld 的多选 gizmo 只画一次、也只回调一次，必须自己遍历选中集合。
+        /// </summary>
+        private void ApplyGroupToSelection(string groupName, float target, float alt, int mode)
+        {
+            int applied = 0;
+            try
+            {
+                List<object> sel = Find.Selector.SelectedObjects;
+                if (sel != null && sel.Count > 1)
+                {
+                    for (int i = 0; i < sel.Count; i++)
+                    {
+                        Thing t = sel[i] as Thing;
+                        if (t == null || t.Map != parent.Map)
+                            continue;
+                        CompThermalGroup c = t.TryGetComp<CompThermalGroup>();
+                        if (c == null)
+                            continue;
+                        c.SetGroup(groupName, target, alt, mode);
+                        applied++;
+                    }
+                }
+            }
+            catch (System.Exception e)
+            {
+                SafeLog.Report("批量应用温控分组", e);
+            }
+
+            // 选中的东西里没有同类设备时，至少把当前这台改掉。
+            if (applied == 0)
+                SetGroup(groupName, target, alt, mode);
         }
     }
 
     public class ThermalGroupInfo
     {
+        public string name = "";
+        public Map map;
+
         public List<CompThermalGroup> members = new List<CompThermalGroup>();
         public float target = 21f;
         public float altTarget = 18f;
@@ -352,6 +420,7 @@ namespace Shuo.GridThermal
         public float avgTemp;
 
         // 显示用字符串一并缓存：OnGUI 每帧都读，现场格式化会产生大量小对象。
+        public string nameText = "";     // 截断后的组名，长名字不会溢到下一列
         public string membersText = "0 台";
         public string avgText = "0 °C";
         public string targetText = "21 °C";
@@ -372,9 +441,18 @@ namespace Shuo.GridThermal
             }
             avgTemp = n == 0 ? 0f : sum / n;
 
+            // 温控页「分组」列只有 130px，10 个全角字约 120px，再长就压到「成员」列了。
+            nameText = TruncateName(name, 10);
             membersText = members.Count + " 台";
             avgText = avgTemp.ToString("0") + " °C";
             RefreshTexts();
+        }
+
+        private static string TruncateName(string s, int max)
+        {
+            if (string.IsNullOrEmpty(s))
+                return "";
+            return s.Length <= max ? s : s.Substring(0, max) + "…";
         }
 
         public void RefreshTexts()
@@ -456,6 +534,8 @@ namespace Shuo.GridThermal
                 if (!result.TryGetValue(c.group, out info))
                 {
                     info = new ThermalGroupInfo();
+                    info.name = c.group;
+                    info.map = map;
                     info.target = c.targetTemp;
                     info.altTarget = c.altTemp;
                     info.mode = c.mode;
@@ -543,6 +623,44 @@ namespace Shuo.GridThermal
                 m.SetGroup("", 21f, 18f, CompThermalGroup.ModeUniform);
             }
             Invalidate(map);
+        }
+
+        /// <summary>
+        /// 改名。只动 group 这个标签，不重设温度——所以不走 SetGroup，
+        /// 避免改名顺带触发 ApplyTarget 和「记录原目标温度」那套逻辑。
+        /// </summary>
+        public static bool Rename(ThermalGroupInfo info, string newName)
+        {
+            if (info == null)
+                return true;
+
+            newName = (newName ?? "").Trim();
+            if (newName.Length == 0)
+            {
+                Messages.Message("分组名不能为空。", MessageTypeDefOf.RejectInput, false);
+                return false;
+            }
+            if (newName.Length > 24)
+                newName = newName.Substring(0, 24);
+            if (newName == info.name)
+                return true;
+
+            Dictionary<string, ThermalGroupInfo> existing = Scan(info.map);
+            if (existing != null && existing.ContainsKey(newName))
+            {
+                Messages.Message("已经有同名分组：" + newName, MessageTypeDefOf.RejectInput, false);
+                return false;
+            }
+
+            for (int i = 0; i < info.members.Count; i++)
+            {
+                CompThermalGroup m = info.members[i];
+                if (m != null)
+                    m.group = newName;
+            }
+
+            Invalidate(info.map);
+            return true;
         }
     }
 }

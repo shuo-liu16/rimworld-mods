@@ -345,7 +345,7 @@ namespace Shuo.GridThermal
 
         // ---------- 温控 ----------
 
-        private enum Action { None, Mode, Select, Disband }
+        private enum Action { None, Mode, Rename, Select, Disband }
 
         // 温控表列坐标（滚动视图内容坐标系）。
         // 温度单元格布局：[−5][−1] 21°C [+1][+5]，数值居中，符合“左减右加”的直觉。
@@ -355,8 +355,9 @@ namespace Shuo.GridThermal
         private const float ColMode = 267f;
         private const float ColTarget = 335f;
         private const float ColAlt = 521f;
-        private const float ColSelect = 712f;
-        private const float ColDisband = 766f;
+        private const float ColRename = 712f;
+        private const float ColSelect = 766f;
+        private const float ColDisband = 820f;
         private const float TempLabelOffset = 62f;
 
         // 季节判定结果缓存：只在这两个值变化时重建字符串，避免每帧拼字符串。
@@ -434,7 +435,7 @@ namespace Shuo.GridThermal
                 if (i % 2 == 1)
                     Widgets.DrawHighlight(new Rect(0f, y, viewRect.width, RowHeight + 4f));
 
-                Widgets.Label(new Rect(ColGroup, y, 130f, RowHeight), k);
+                Widgets.Label(new Rect(ColGroup, y, 130f, RowHeight), info.nameText);
                 Widgets.Label(new Rect(ColMembers, y, 55f, RowHeight), info.membersText);
                 Widgets.Label(new Rect(ColRoom, y, 70f, RowHeight), info.avgText);
 
@@ -465,6 +466,11 @@ namespace Shuo.GridThermal
                     LabelCentered(new Rect(ColAlt + TempLabelOffset, y, 58f, RowHeight), "—");
                 }
 
+                if (Widgets.ButtonText(new Rect(ColRename, y + 2f, 50f, 24f), "改名"))
+                {
+                    key = k;
+                    act = Action.Rename;
+                }
                 if (Widgets.ButtonText(new Rect(ColSelect, y + 2f, 50f, 24f), "选中"))
                 {
                     key = k;
@@ -510,6 +516,12 @@ namespace Shuo.GridThermal
                     break;
                 case Action.Select:
                     SelectMany(target.members);
+                    break;
+                case Action.Rename:
+                    Find.WindowStack.Add(new Dialog_RenameGroup(
+                        "重命名温控分组",
+                        target.name,
+                        delegate (string n) { return ThermalGroups.Rename(target, n); }));
                     break;
                 case Action.Disband:
                     ThermalGroups.Disband(target);
@@ -656,7 +668,10 @@ namespace Shuo.GridThermal
                     PowerGroups.SetPower(target, !PowerGroups.AnyOn(target));
                     break;
                 case PowerAction.Rename:
-                    Find.WindowStack.Add(new Dialog_RenamePowerGroup(target));
+                    Find.WindowStack.Add(new Dialog_RenameGroup(
+                        "重命名电力分组",
+                        target.name,
+                        delegate (string n) { return PowerGroups.Rename(target, n); }));
                     break;
                 case PowerAction.Select:
                     SelectPowerMembers(target.members);
