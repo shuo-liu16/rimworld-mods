@@ -133,7 +133,7 @@ namespace Shuo.GridThermal
                 string g = kv.Key;
                 PowerGroupInfo info = kv.Value;
                 opts.Add(new FloatMenuOption(
-                    g + "（" + info.members.Count + " 台）",
+                    g + "（" + info.liveCount + " 台）",
                     delegate { SetGroup(g); }));
             }
 
@@ -168,6 +168,9 @@ namespace Shuo.GridThermal
         public bool anyOn;
         public bool allOn;
         public bool anySwitchable;
+
+        /// <summary>在场成员数（不含已拆掉的）。菜单和面板都用这个口径，避免一处说 5 台一处说 4 台。</summary>
+        public int liveCount;
 
         // 面板每帧都读，字符串在这里一次算好，绘制阶段不再拼接。
         public string nameText = "";      // 截断后的组名，长名字不会溢到下一列
@@ -230,6 +233,7 @@ namespace Shuo.GridThermal
             anySwitchable = switchable > 0;
             anyOn = onCount > 0;
             allOn = switchable > 0 && onCount == switchable;
+            liveCount = total;
 
             // 组名最长 24 字，而这一列只有 180px：不截断会盖住「成员」列。
             nameText = Truncate(name, 12);
@@ -319,6 +323,12 @@ namespace Shuo.GridThermal
             {
                 Thing t = things[i];
                 if (t == null || t.def == null || !t.Spawned)
+                    continue;
+
+                // 分组只可能挂在建筑上，而 AllThings 里绝大多数是物品（粮食、石块、尸体）。
+                // 先按 category 过滤，TryGetComp 的调用量就从「全图物体数」降到「建筑数」，
+                // 大基地里差了不止一个数量级。
+                if (t.def.category != ThingCategory.Building)
                     continue;
 
                 CompPowerGroup c = t.TryGetComp<CompPowerGroup>();
@@ -412,7 +422,8 @@ namespace Shuo.GridThermal
                 m.SetPower(on);
             }
 
-            info.Recalculate();
+            // 不在这里 Recalculate：Invalidate 之后这一次统计结果会被直接丢弃，
+            // 下一帧 Ensure 重建时才算一次。少一遍全组遍历 + 一整套字符串拼接。
             Invalidate(info.map);
         }
 

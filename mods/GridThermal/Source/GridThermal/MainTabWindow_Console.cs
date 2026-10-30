@@ -21,6 +21,8 @@ namespace Shuo.GridThermal
         private static readonly Color ColorOk = new Color(0.6f, 0.9f, 0.6f);
         private static readonly Color ColorDrain = new Color(1f, 0.85f, 0.4f);
         private static readonly Color ColorShort = new Color(1f, 0.5f, 0.5f);
+        // 纯电池组没有开关，「关闭」不是告警状态，别染成红色。
+        private static readonly Color ColorNeutral = new Color(0.72f, 0.72f, 0.72f);
 
         private static readonly List<string[]> powerRows = new List<string[]>();
         private static readonly List<int> powerStates = new List<int>();
@@ -596,7 +598,9 @@ namespace Shuo.GridThermal
                 Widgets.Label(new Rect(ColPgStore, y, 80f, RowHeight), info.storeText);
 
                 Color old = GUI.color;
-                GUI.color = info.allOn ? ColorOk : (info.anyOn ? ColorDrain : ColorShort);
+                GUI.color = !info.anySwitchable
+                    ? ColorNeutral
+                    : (info.allOn ? ColorOk : (info.anyOn ? ColorDrain : ColorShort));
                 Widgets.Label(new Rect(ColPgState, y, 60f, RowHeight), info.stateText);
                 GUI.color = old;
 
@@ -612,7 +616,7 @@ namespace Shuo.GridThermal
                 else
                 {
                     Color oldBtn = GUI.color;
-                    GUI.color = ColorShort;
+                    GUI.color = ColorNeutral;
                     LabelCentered(new Rect(ColPgToggle, y, 76f, RowHeight), info.toggleText);
                     GUI.color = oldBtn;
                 }

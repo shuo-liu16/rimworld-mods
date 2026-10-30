@@ -445,6 +445,9 @@ namespace Shuo.GridThermal
                 Thing t = things[i];
                 if (t == null || t.def == null || !t.Spawned)
                     continue;
+                // 温控组件只会挂在建筑上；先按 category 过滤，省掉对满地的物品调 TryGetComp。
+                if (t.def.category != ThingCategory.Building)
+                    continue;
                 CompThermalGroup c = t.TryGetComp<CompThermalGroup>();
                 if (c == null || c.group.NullOrEmpty())
                     continue;
